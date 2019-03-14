@@ -1,0 +1,41 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File (Integrated Terminal)",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset",
+                "cube_small",
+                "--seed",
+                "1",
+                "--lr",
+                "1e-3",
+                "--beta1",
+                "0.9",
+                "--beta2",
+                "0.999",
+                "--objective",
+                "B",
+                "--model",
+                "B",
+                "--batch_size",
+                "64",
+                "--z_dim",
+                "3",
+                "--max_iter",
+                "1.5e4",
+                "--viz_name",
+                "cube_small_B_gamma1000_z3",
+                "--num_workers",
+                "0"
+            ]
+        },
+    ]
+}

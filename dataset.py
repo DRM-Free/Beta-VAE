@@ -53,8 +53,8 @@ def return_data(args):
         train_kwargs = {'root': root, 'transform': transform}
         dset = CustomImageFolder
 
-    elif name.lower() == 'cube':
-        root = os.path.join(dset_dir, 'cube')
+    elif name.lower() == 'celeba':
+        root = os.path.join(dset_dir, 'CelebA')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
@@ -63,23 +63,6 @@ def return_data(args):
 
     elif name.lower() == 'cube_small':
         root = os.path.join(dset_dir, 'cube_small')
-        transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
-
-
-    elif name.lower() == 'cube_512':
-        root = os.path.join(dset_dir, 'cube_512')
-        transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
-
-    elif name.lower() == 'celeba':
-        root = os.path.join(dset_dir, 'CelebA')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])

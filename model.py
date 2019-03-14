@@ -145,68 +145,6 @@ class BetaVAE_B(BetaVAE_H):
         return self.decoder(z)
 
 
-class BetaVAE_L(BetaVAE_H):
-    """Attemp for a lighter model"""
-
-    def __init__(self, z_dim=2, nc=1):  # initially z_dim=10
-        super(BetaVAE_L, self).__init__()
-        self.nc = nc
-        self.z_dim = z_dim
-        sz1 = 16  # initially 32
-        sz2 = 32  # initially 256
-
-        self.encoder = nn.Sequential(
-            nn.Conv2d(nc, sz1, 4, 2, 1),          # B,  32, 32, 32
-            nn.ReLU(True),
-            nn.Conv2d(sz1, sz1, 4, 2, 1),          # B,  32,  8,  8
-            nn.ReLU(True),
-            nn.Conv2d(sz1, sz1, 4, 2, 1),          # B,  32,  4,  4
-            nn.ReLU(True),
-            View((-1, sz1*4*4)),                  # B, 512
-            nn.Linear(sz1*4*4, sz2),              # B, 256
-            nn.ReLU(True),
-            nn.Linear(sz2, sz2),                 # B, 256
-            nn.ReLU(True),
-            nn.Linear(sz2, z_dim*2),             # B, z_dim*2
-        )
-
-        self.decoder = nn.Sequential(
-            nn.Linear(z_dim, sz2),               # B, 256
-            nn.ReLU(True),
-            nn.Linear(sz2, sz2),                 # B, 256
-            nn.ReLU(True),
-            nn.Linear(sz2, sz1*4*4),              # B, 512
-            nn.ReLU(True),
-            View((-1, sz1, 4, 4)),                # B,  32,  4,  4
-            nn.ConvTranspose2d(sz1, sz1, 4, 2, 1),  # B,  32,  8,  8
-            nn.ReLU(True),
-            nn.ConvTranspose2d(sz1, sz1, 4, 2, 1),  # B,  32, 32, 32
-            nn.ReLU(True),
-            nn.ConvTranspose2d(sz1, nc, 4, 2, 1),  # B,  nc, 64, 64
-        )
-        self.weight_init()
-
-    def weight_init(self):
-        for block in self._modules:
-            for m in self._modules[block]:
-                kaiming_init(m)
-
-    def forward(self, x):
-        distributions = self._encode(x)
-        mu = distributions[:, :self.z_dim]
-        logvar = distributions[:, self.z_dim:]
-        z = reparametrize(mu, logvar)
-        x_recon = self._decode(z).view(x.size())
-
-        return x_recon, mu, logvar
-
-    def _encode(self, x):
-        return self.encoder(x)
-
-    def _decode(self, z):
-        return self.decoder(z)
-
-
 def kaiming_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
         init.kaiming_normal(m.weight)

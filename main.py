@@ -1,13 +1,4 @@
 """main.py"""
-# TODO add wasserstein loss instead of KLD
-# TODO add pruning after a number of iterations for net compatcion
-# TODO determine best encoder / decoder structure
-# TODO fine tune learning rate
-# TODO add support for larger img size ?
-# TODO combine with cycleGAN or srGAN for low res to high res translation
-# TODO experiment with alternate loss types (ex laplacian for high-frequency details)
-# TODO visualize walk in latent space in real time
-# TODO enable steering latent representation to align it with preferred setting (ie rotation axis for rotation latents)
 
 import argparse
 
@@ -70,8 +61,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--dset_dir', default='data',
                         type=str, help='dataset directory')
-    # parser.add_argument('--dataset', default='CelebA', type=str, help='dataset name')
-    parser.add_argument('--dataset', default='3dchairs',
+    parser.add_argument('--dataset', default='CelebA',
                         type=str, help='dataset name')
     parser.add_argument('--image_size', default=64, type=int,
                         help='image size. now only (64,64) is supported')
@@ -91,7 +81,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--gather_step', default=1000, type=int,
                         help='numer of iterations after which data is gathered for visdom')
-    parser.add_argument('--display_step', default=10000, type=int,
+    parser.add_argument('--display_step', default=2000, type=int,
                         help='number of iterations after which loss data is printed and visdom is updated')
     parser.add_argument('--save_step', default=1000, type=int,
                         help='number of iterations after which a checkpoint is saved')
