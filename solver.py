@@ -14,7 +14,7 @@ from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
 
 from utils import cuda, grid2gif
-from model import BetaVAE_H, BetaVAE_B
+from model import BetaVAE_H, BetaVAE_B, BetaVAE_L
 from dataset import return_data
 
 
@@ -94,6 +94,15 @@ class Solver(object):
         elif args.dataset.lower() == '3dchairs':
             self.nc = 3
             self.decoder_dist = 'gaussian'
+        elif args.dataset.lower() == 'cube':
+            self.nc = 3
+            self.decoder_dist = 'gaussian'
+        elif args.dataset.lower() == 'cube_small':
+            self.nc = 3
+            self.decoder_dist = 'gaussian'
+        elif args.dataset.lower() == 'cube_512':
+            self.nc = 3
+            self.decoder_dist = 'gaussian'
         elif args.dataset.lower() == 'celeba':
             self.nc = 3
             self.decoder_dist = 'gaussian'
@@ -104,6 +113,8 @@ class Solver(object):
             net = BetaVAE_H
         elif args.model == 'B':
             net = BetaVAE_B
+        elif args.model == 'L':
+            net = BetaVAE_L
         else:
             raise NotImplementedError('only support model H or B')
 
@@ -165,6 +176,10 @@ class Solver(object):
                     beta_vae_loss = recon_loss + self.beta*total_kld
                 elif self.objective == 'B':
                     C = torch.clamp(self.C_max/self.C_stop_iter*self.global_iter, 0, self.C_max.data[0])
+                    beta_vae_loss = recon_loss + self.gamma * (total_kld - C).abs()
+                elif self.objective == 'L':
+                    C = torch.clamp(self.C_max/self.C_stop_iter *
+                                    self.global_iter, 0, self.C_max.data[0])
                     beta_vae_loss = recon_loss + self.gamma*(total_kld-C).abs()
 
                 self.optim.zero_grad()
@@ -177,9 +192,16 @@ class Solver(object):
                                        recon_loss=recon_loss.data, total_kld=total_kld.data,
                                        dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
 
-                if self.global_iter%self.display_step == 0:
-                    pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
-                        self.global_iter, recon_loss.data[0], total_kld.data[0], mean_kld.data[0]))
+                if self.global_iter % self.display_step == 0:
+                    #--------------debug code--------------
+                    # print('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
+                    #     self.global_iter, recon_loss.data[0], total_kld.data[0], mean_kld.data[0]))
+                    #--------------debug code--------------
+
+                    # pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
+                        # self.global_iter, recon_loss.data[0], total_kld.data[0], mean_kld.data[0]))
+                        
+                    pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(self.global_iter, recon_loss.data.item(), total_kld.data.item(), mean_kld.data.item()))
 
                     var = logvar.exp().mean(0).data
                     var_str = ''
@@ -204,7 +226,7 @@ class Solver(object):
                     self.save_checkpoint('last')
                     pbar.write('Saved checkpoint(iter:{})'.format(self.global_iter))
 
-                if self.global_iter%50000 == 0:
+                if self.global_iter%self.save_step == 0:
                     self.save_checkpoint(str(self.global_iter))
 
                 if self.global_iter >= self.max_iter:
@@ -221,6 +243,7 @@ class Solver(object):
         x_recon = self.gather.data['images'][1][:100]
         x_recon = make_grid(x_recon, normalize=True)
         images = torch.stack([x, x_recon], dim=0).cpu()
+
         self.viz.images(images, env=self.viz_name+'_reconstruction',
                         opts=dict(title=str(self.global_iter)), nrow=10)
         self.net_mode(train=True)
@@ -231,11 +254,11 @@ class Solver(object):
 
         mus = torch.stack(self.gather.data['mu']).cpu()
         vars = torch.stack(self.gather.data['var']).cpu()
-
         dim_wise_klds = torch.stack(self.gather.data['dim_wise_kld'])
         mean_klds = torch.stack(self.gather.data['mean_kld'])
         total_klds = torch.stack(self.gather.data['total_kld'])
         klds = torch.cat([dim_wise_klds, mean_klds, total_klds], 1).cpu()
+
         iters = torch.Tensor(self.gather.data['iter'])
 
         legend = []
