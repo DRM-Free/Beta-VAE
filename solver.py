@@ -13,9 +13,12 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
 
-from utils import cuda, grid2gif
+from utils import cuda, grid2gif, get_image
 from model import BetaVAE_H, BetaVAE_B
 from dataset import return_data
+
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 
 def reconstruction_loss(x, x_recon, distribution):
@@ -441,6 +444,29 @@ class Solver(object):
                          os.path.join(output_dir, key+'.gif'), delay=10)
 
         self.net_mode(train=True)
+
+    def navigate_latent_space(self):
+        self.net_mode(train=False)
+        import random
+
+        decoder = self.net.decoder
+        encoder = self.net.encoder
+        # base_displacement defines step size for displacements in any dimensions of latent space.
+        base_displacement = [0.1] * self.z_dim
+
+        init_img = self.data_loader.dataset.__getitem__(0)
+        init_img = Variable(
+            cuda(init_img, self.use_cuda), volatile=True).unsqueeze(0)
+        init_z = encoder(init_img)[:, :self.z_dim]
+
+        # save_image(tensor=init_img.cpu(), filename="test_image.jpg") #this would save the image so image is successfully sent to cpu
+        init_img = get_image(tensor=init_img.cpu())
+        # sample = F.sigmoid(decoder(init_z)).data
+        # Tensor.cpu  # to copy the tensor to host memory
+        # img = get_image(tensor=init_img.cpu())
+        fig = plt.imshow(init_img)
+        plt.waitforbuttonpress(0)  # this will wait for indefinite time
+        plt.close()
 
     def net_mode(self, train):
         if not isinstance(train, bool):

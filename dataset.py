@@ -62,7 +62,7 @@ def return_data(args):
         dset = CustomImageFolder
 
     elif name.lower() == 'cube_small':
-        root = os.path.join(dset_dir, 'cube_small')
+        root = os.path.join(dset_dir, 'cube_64_200_img')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])

@@ -1,5 +1,15 @@
 """main.py"""
-
+# TODO Experiment with different experimental conditions : beta/gamma, size of the dataset, position selection, order in which images are presented...
+# TODO support higher image size
+# TODO understand why disentanglement failure sometimes happens (all 3 latent dimensions are effectively used)
+# TODO implement interactive latent space navigation
+# TODO the model obviously lacks the ability to deal with the symetric nature of the 3D space : neighboring states in the latent space might be
+# diametrically opposed : neighboring output may share same silhouette while one is in the shadowed while the other is in plain light
+# Maybe use 3D steerable CNN as model
+# TODO understand how a spherical feature space can be learned, and how the latent parameter boundaries are determined
+# TODO maybe train encoder and decoder separately, encoder first to force camera position. But in this case is it even relevant to do
+# unsupervised learning ? enforcing a feature encoding between specific values and being able to merege and separate two features at will
+# would be more appealing
 import argparse
 
 import numpy as np
@@ -23,7 +33,9 @@ def main(args):
     if args.train:
         net.train()
     else:
-        net.traverse()
+        net.viz_traverse()
+    if args.navigate_latent_space:
+        net.navigate_latent_space()
 
 
 if __name__ == "__main__":
@@ -78,6 +90,8 @@ if __name__ == "__main__":
                         type=str2bool, help='save traverse images and gif')
     parser.add_argument('--output_dir', default='outputs',
                         type=str, help='output directory')
+    parser.add_argument('--navigate_latent_space', default=True, type=str2bool,
+                        help='Activate this for interactive latent space navigation after training')
 
     parser.add_argument('--gather_step', default=1000, type=int,
                         help='numer of iterations after which data is gathered for visdom')
