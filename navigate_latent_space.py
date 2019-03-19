@@ -33,7 +33,8 @@ class latent_space_navigator(object):
             self.navigation_step)).grid(sticky=E)
 
         # création d'un widget 'Canvas' contenant une image bitmap :
-        self.can1 = Canvas(self.fen1, width=200, height=200, bg='white')
+        self.can1 = Canvas(
+            self.fen1, width=self.displayed_image_size[0], height=self.displayed_image_size[1], bg='white')
         sol.net_mode(train=False)
 
         self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
@@ -69,36 +70,28 @@ class latent_space_navigator(object):
     def update_img(self):
         self.latent_position = torch.tensor(
             [random.uniform(-2, 2)]*self.sol.z_dim).cuda()
-        self.img = F.sigmoid(
+        self.img_arr = F.sigmoid(
             self.sol.net.decoder(self.latent_position)).data
-        self.img = get_image(tensor=self.img.cpu())
-        self.img = PhotoImage(image=self.img)
-        # self.img.image = self.img
+        self.img_arr = get_image(tensor=self.img_arr.cpu())
         self.scale_img()
-        # self.can1.delete()  # deletes all graphical items from can1
-        # TODO fix the image here
-        # self.img = Image.fromarray(np.uint8(self.img))
-
-        # self.can1.create_image(64, 64, image=self.img)
-        # self.can1.create_image(64, 64, image=self.img)
+        img = ImageTk.PhotoImage(image=self.img_arr)
+        self.label.configure(image=img)
+        # self.label.pack()
         self.can1.update_idletasks
 
     def init_img(self):
-        self.img = self.sol.data_loader.dataset.__getitem__(0)
-        self.img = Variable(
-            cuda(self.img, self.sol.use_cuda), volatile=True).unsqueeze(0)
-        self.img = get_image(tensor=self.img.cpu())
-        # PIL photoimage does not implement zoom, so we use tkinter photoimage
-        self.img = ImageTk.PhotoImage(image=self.img)
-        # self.scale_img()
-        self.label = Label(self.can1, image=self.img)
-        self.label.image = self.img  # keep a reference!
+        self.img_arr = self.sol.data_loader.dataset.__getitem__(0)
+        self.img_arr = Variable(
+            cuda(self.img_arr, self.sol.use_cuda), volatile=True).unsqueeze(0)
+        self.img_arr = get_image(tensor=self.img_arr.cpu())
+        self.scale_img()
+        img = ImageTk.PhotoImage(image=self.img_arr)
+        self.label = Label(self.can1, image=img)
+        self.label.image = img  # keep a reference!
         self.label.pack()
 
     def scale_img(self):
-        scalew = self.displayed_image_size[0]/self.img.width()
-        scaleh = self.displayed_image_size[1]/self.img.height()
-        self.img.zoom(scalew, scaleh)
+        self.img_arr = self.img_arr.resize(self.displayed_image_size)
 
     def close_window(self, event):
         self.fen1.destroy()
