@@ -18,6 +18,7 @@ import torch
 from solver import Solver
 from utils import str2bool
 
+from navigate_latent_space import latent_space_navigator
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 
@@ -35,7 +36,9 @@ def main(args):
     else:
         net.viz_traverse()
     if args.navigate_latent_space:
-        net.navigate_latent_space()
+        # net.navigate_latent_space()
+        navigator = latent_space_navigator(net)
+        navigator.navigate()
 
 
 if __name__ == "__main__":

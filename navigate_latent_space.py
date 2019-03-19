@@ -1,55 +1,69 @@
-import argparse
-import numpy as np
-import torch
+from tkinter import Tk, Label, Canvas, PhotoImage, E
 from solver import Solver
-from utils import str2bool
+import torch
+from torch.autograd import Variable
+import torch.nn.functional as F
+from utils import cuda, grid2gif, get_image
+
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from PIL import Image, ImageTk
+import random
 
 
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = True
+class latent_space_navigator(object):
+    def __init__(self, sol):
+        self.current_navigated_dim = 0
+        self.navigation_step = 0.1
+        self.fen1 = Tk()
+        self.sol = sol
+        # création de widgets Label(), Entry(), et Checkbutton() :
+        Label(self.fen1, text='Controls :').grid(sticky=E)
+        Label(self.fen1, text='Change exploration step : +-').grid(sticky=E)
+        Label(self.fen1, text='Change explored latent dimension : up down arrrows').grid(
+            sticky=E)
+        Label(self.fen1, text='Explore dimension : left right arrows').grid(sticky=E)
 
+        Label(self.fen1, text='Info:').grid(sticky=E)
+        Label(self.fen1, text='Currently explored dimension : {0}'.format(
+            self.current_navigated_dim)).grid(sticky=E)
+        Label(self.fen1, text='Current step value :{0}'.format(
+            self.navigation_step)).grid(sticky=E)
 
-def main(args):
-    net = Solver(args)
+        # création d'un widget 'Canvas' contenant une image bitmap :
+        self.can1 = Canvas(self.fen1, width=160, height=160, bg='white')
+        sol.net_mode(train=False)
 
-    print()
+        decoder = sol.net.decoder
+        encoder = sol.net.encoder
 
+        init_img = sol.data_loader.dataset.__getitem__(0)
+        init_img = Variable(
+            cuda(init_img, sol.use_cuda), volatile=True).unsqueeze(0)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description='interactive latent space explorer')
-    parser.add_argument('--load_directory', default='checkpoints/cube_small_B_gamma5_z3',
-                        type=str, help='directory containing the checkpoint to be loaded')
-    parser.add_argument('--viz_on', default=True,
-                        type=str2bool, help='enable visdom visualization')
-    parser.add_argument('--viz_name', default='main',
-                        type=str, help='visdom env name')
-    parser.add_argument('--viz_port', default=8097,
-                        type=str, help='visdom port number')
+        self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
+        self.fen1.bind('<Left>', self.leftKey)
+        self.fen1.bind('<Right>', self.rightKey)
+        self.update_img()
 
-    parser.add_argument('--z_dim', default=10, type=int,
-                        help='dimension of the representation z')
-    parser.add_argument('--beta', default=4, type=float,
-                        help='beta parameter for KL-term in original beta-VAE')
-    parser.add_argument('--objective', default='H', type=str,
-                        help='beta-vae objective proposed in Higgins et al. or Burgess et al. H/B')
-    parser.add_argument('--model', default='H', type=str,
-                        help='model proposed in Higgins et al. or Burgess et al. H/B')
-    parser.add_argument('--gamma', default=1000, type=float,
-                        help='gamma parameter for KL-term in understanding beta-VAE')
-    parser.add_argument('--C_max', default=25, type=float,
-                        help='capacity parameter(C) of bottleneck channel')
-    parser.add_argument('--C_stop_iter', default=1e5, type=float,
-                        help='when to stop increasing the capacity')
-    parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
-    parser.add_argument('--beta1', default=0.9, type=float,
-                        help='Adam optimizer beta1')
-    parser.add_argument('--beta2', default=0.999,
-                        type=float, help='Adam optimizer beta2')
+    def leftKey(self, event):
+        print("Left key pressed")
 
-    parser.add_argument('--dset_dir', default='data',
-                        type=str, help='dataset directory')
-    parser.add_argument('--dataset', default='cube_small',
-                        type=str, help='dataset name')
-    parser.add_argument('--image_size', default=64, type=int,
-                        help='image size. now only (64,64) is supported')
+    def rightKey(self, event):
+        print("Right key pressed")
+
+    def update_img(self):
+        self.latent_position = torch.tensor(
+            [random.uniform(-2, 2)]*self.sol.z_dim).cuda()
+        self.img = F.sigmoid(
+            self.sol.net.decoder(self.latent_position)).data
+        self.img = get_image(tensor=self.img.cpu())
+
+        self.can1.delete()  # deletes all graphical items from can1
+        # TODO fix the image here
+        self.can1.create_image(
+            64, 64, image=ImageTk.PhotoImage(image=self.img))
+
+    def navigate(self):
+        # démarrage :
+        self.fen1.mainloop()

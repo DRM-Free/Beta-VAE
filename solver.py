@@ -20,6 +20,8 @@ from dataset import return_data
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
+import numpy as np
+
 
 def reconstruction_loss(x, x_recon, distribution):
     batch_size = x.size(0)
@@ -457,15 +459,26 @@ class Solver(object):
         init_img = self.data_loader.dataset.__getitem__(0)
         init_img = Variable(
             cuda(init_img, self.use_cuda), volatile=True).unsqueeze(0)
-        init_z = encoder(init_img)[:, :self.z_dim]
-
+        # Encore initial image
+        # init_z = encoder(init_img)[:, :self.z_dim]
+        init_z = random.uniform(-2, 2)
         # save_image(tensor=init_img.cpu(), filename="test_image.jpg") #this would save the image so image is successfully sent to cpu
-        init_img = get_image(tensor=init_img.cpu())
-        # sample = F.sigmoid(decoder(init_z)).data
-        # Tensor.cpu  # to copy the tensor to host memory
-        # img = get_image(tensor=init_img.cpu())
-        fig = plt.imshow(init_img)
-        plt.waitforbuttonpress(0)  # this will wait for indefinite time
+        # init_img = get_image(tensor=init_img)
+        # fig = plt.imshow(init_img)
+        # plt.waitforbuttonpress(0)  # this will wait for indefinite time
+        # plt.clf()
+        explore_array = [0]*self.z_dim
+        for i in np.linspace(-3, 3, 10):
+            # for j in range(1, np.size(explore_array)):
+                # explore_array[j] = i
+            explore_array[0] = i
+            explore_tensor = torch.tensor(explore_array).cuda()
+            second_z = init_z + explore_tensor
+            second_img = F.sigmoid(decoder(second_z)).data
+            second_img = get_image(tensor=second_img.cpu())
+            plt.imshow(second_img)
+            plt.waitforbuttonpress(0)
+            plt.close()
         plt.close()
 
     def net_mode(self, train):

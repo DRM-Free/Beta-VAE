@@ -32,9 +32,13 @@
                 "--max_iter",
                 "1.5e4",
                 "--viz_name",
-                "cube_small_B_gamma1000_z3",
+                "cube_small_B_gamma5_z3",
                 "--num_workers",
-                "0"
+                "0",
+                "--train",
+                "False",
+                "--gamma",
+                "5"
             ]
         },
     ]
