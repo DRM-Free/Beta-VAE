@@ -19,7 +19,6 @@ class latent_space_navigator(object):
         self.displayed_image_size = [200, 200]
         self.fen1 = Tk()
         self.sol = sol
-        self.latent_position = [0]*self.sol.z_dim
         # création de widgets Label()
         Labels_frame = Frame(self.fen1)
         Labels_frame.grid(sticky=E, row=0, column=0)
@@ -40,8 +39,8 @@ class latent_space_navigator(object):
         self.info_step = Label(Labels_frame, text='Current step value :{0}'.format(
             self.navigation_step))
         self.info_step.pack()
-        self.info_latent_pos = Label(Labels_frame, text='Current latent position :{0}'.format(
-            self.latent_position))
+        self.info_latent_pos = Label(
+            Labels_frame, text='Current latent position :')
         self.info_latent_pos.pack()
 
         # self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
@@ -55,6 +54,7 @@ class latent_space_navigator(object):
         self.fen1.bind('<Key-KP_0>', self.reinit_image)
         self.init_latent_position()
         self.init_img()
+        self.update_info_latent_pos()
 
     def leftKey(self, event):
         self.latent_position[self.current_navigated_dim] = self.latent_position[self.current_navigated_dim] - self.navigation_step
@@ -107,12 +107,24 @@ class latent_space_navigator(object):
         print("Latent position re-initialized")
 
     def init_latent_position(self):
-        print(self.sol.data_loader.dataset.__len__())
+        # print(self.sol.data_loader.dataset.__len__())
+        # get one random image from dataset
         ind = randint(1, self.sol.data_loader.dataset.__len__())
-        self.img_arr = self.sol.data_loader.dataset.__getitem__(ind)
-        self.img_arr = Variable(
-            cuda(self.img_arr, self.sol.use_cuda), volatile=True).unsqueeze(0)
-        self.img_arr = get_image(tensor=self.img_arr.cpu())
+        tensor_image = self.sol.data_loader.dataset.__getitem__(ind)
+
+        # encode this image for initial latent position
+        tensor_image = Variable(
+            cuda(tensor_image, self.sol.use_cuda), volatile=True).unsqueeze(0)
+        self.latent_position = self.encode_image(tensor_image)
+
+        # send initial image to CPU
+        self.img_arr = get_image(tensor=tensor_image.cpu())
+
+    def encode_image(self, image):
+        latent_position = self.sol.net.encoder(image)[:, :self.sol.z_dim]
+        latent_position = latent_position.data.cpu().numpy()[0]
+        # latent_position = latent_position.numpy()
+        return latent_position
 
     def update_img(self):
         position_tensor = torch.tensor(self.latent_position).cuda()
