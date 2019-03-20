@@ -8,7 +8,7 @@
             "name": "Python: Current File (Integrated Terminal)",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
                 "--dataset",
@@ -38,7 +38,9 @@
                 "--train",
                 "False",
                 "--gamma",
-                "5"
+                "5",
+                "--viz_on",
+                "False"
             ]
         },
     ]
