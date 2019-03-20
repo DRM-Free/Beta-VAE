@@ -37,6 +37,7 @@ def main(args):
         net.viz_traverse()
     if args.navigate_latent_space:
         # net.navigate_latent_space()
+        net.net_mode(train=False)
         navigator = latent_space_navigator(net)
         navigator.navigate()
 

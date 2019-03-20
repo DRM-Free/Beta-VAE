@@ -15,21 +15,24 @@ import numpy as np
 class latent_space_navigator(object):
     def __init__(self, sol):
         self.current_navigated_dim = 0
-        self.navigation_step = 0.1
+        self.navigation_step = 0.5
         self.displayed_image_size = [200, 200]
         self.fen1 = Tk()
         self.sol = sol
-        self.latent_position=[0]*self.sol.z_dim
+        self.latent_position = [0]*self.sol.z_dim
         # création de widgets Label()
         Labels_frame = Frame(self.fen1)
         Labels_frame.grid(sticky=E, row=0, column=0)
         Label(Labels_frame, text='Controls :').pack()
+        Label(Labels_frame, text='Reinit latent position : Keypad zero').pack()
         Label(Labels_frame, text='Change exploration step : +-').pack()
         Label(Labels_frame,
               text='Change explored latent dimension : up down arrrows').pack()
         Label(Labels_frame, text='Explore dimension : left right arrows').pack()
 
         Label(Labels_frame, text='Info:').pack()
+        Label(Labels_frame, text='Latent space dimension : {0}'.format(
+            self.sol.z_dim)).pack()
         # Next labels need updating so give them a name and keep them in self
         self.info_dim = Label(Labels_frame, text='Currently explored dimension : {0}'.format(
             self.current_navigated_dim))
@@ -39,71 +42,91 @@ class latent_space_navigator(object):
         self.info_step.pack()
         self.info_latent_pos = Label(Labels_frame, text='Current latent position :{0}'.format(
             self.latent_position))
-        self.info_step.pack()
-
-        # création d'un widget 'Canvas' contenant une image bitmap :
-        # self.can1 = Canvas(
-        # self.fen1, width=self.displayed_image_size[0], height=self.displayed_image_size[1], bg='white')
-        # sol.net_mode(train=False)
+        self.info_latent_pos.pack()
 
         # self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
         self.fen1.bind('<Left>', self.leftKey)
         self.fen1.bind('<Right>', self.rightKey)
-        self.fen1.bind('<Up>', self.upKey)
-        self.fen1.bind('<Down>', self.downKey)
-        self.fen1.bind('<Key-KP_Add>', self.plusKey)
-        self.fen1.bind('<Key-KP_Subtract>', self.minusKey)
+        self.fen1.bind('<Up>', self.eplored_dimension_increment)
+        self.fen1.bind('<Down>', self.explored_dimension_decrement)
+        self.fen1.bind('<Key-KP_Add>', self.increment_exploration_step)
+        self.fen1.bind('<Key-KP_Subtract>', self.decrement_exploration_step)
         self.fen1.bind('<Key-Escape>', self.close_window)
-
+        self.fen1.bind('<Key-KP_0>', self.reinit_image)
+        self.init_latent_position()
         self.init_img()
 
     def leftKey(self, event):
-        print("Left key pressed")
+        self.latent_position[self.current_navigated_dim] = self.latent_position[self.current_navigated_dim] - self.navigation_step
+        self.update_img()
+        self.update_info_latent_pos()
 
     def rightKey(self, event):
-        print("Right key pressed")
-
-    def upKey(self, event):
-        print("Up key pressed")
-
-    def downKey(self, event):
-        print("Down key pressed")
-
-    def plusKey(self, event):
-        print("Plus key pressed")
-
-    def minusKey(self, event):
-        print("Minus key pressed")
+        self.latent_position[self.current_navigated_dim] = self.latent_position[self.current_navigated_dim] + self.navigation_step
         self.update_img()
+        self.update_info_latent_pos()
 
-    def update_img(self):
+    def eplored_dimension_increment(self, event):
+        self.current_navigated_dim = min(
+            self.current_navigated_dim + 1, self.sol.z_dim - 1)
+        self.update_info_dim()
+        print("Explored dimension updated")
 
-        # self.latent_position = torch.tensor(
-        #     [random.uniform(-2, 2)]*self.sol.z_dim).cuda()
-        # self.img_arr = F.sigmoid(
-        #     self.sol.net.decoder(self.latent_position)).data
-        # self.img_arr = get_image(tensor=self.img_arr.cpu())
+    def explored_dimension_decrement(self, event):
+        self.current_navigated_dim = max(
+            self.current_navigated_dim - 1, 0)
+        self.update_info_dim()
+        print("Explored dimension updated")
 
-        # testing update with original images
+    def increment_exploration_step(self, event):
+        self.navigation_step = self.navigation_step + 0.1
+        self.update_info_step()
+        print("Exploration step increased")
+
+    def decrement_exploration_step(self, event):
+        self.navigation_step = self.navigation_step - 0.1
+        self.update_info_step()
+        print("Exploration step decreased")
+
+    def update_info_step(self):
+        self.info_step.configure(
+            text='Current step value :{0:.2f}'.format(self.navigation_step))
+
+    def update_info_dim(self):
+        self.info_dim.configure(
+            text='Current navigated dimension :{}'.format(self.current_navigated_dim))
+
+    def update_info_latent_pos(self):
+        self.info_latent_pos.configure(text='Current latent position :{}'.format(
+            np.around(self.latent_position, 2)))
+
+    def reinit_image(self, event):
+        self.init_latent_position()
+        self.update_img()
+        self.update_info_latent_pos()
+        print("Latent position re-initialized")
+
+    def init_latent_position(self):
+        print(self.sol.data_loader.dataset.__len__())
         ind = randint(1, self.sol.data_loader.dataset.__len__())
         self.img_arr = self.sol.data_loader.dataset.__getitem__(ind)
         self.img_arr = Variable(
             cuda(self.img_arr, self.sol.use_cuda), volatile=True).unsqueeze(0)
         self.img_arr = get_image(tensor=self.img_arr.cpu())
-        # testing code end
 
+    def update_img(self):
+        position_tensor = torch.tensor(self.latent_position).cuda()
+        self.img_arr = F.sigmoid(self.sol.net.decoder(position_tensor).data)
+        self.img_arr = get_image(tensor=self.img_arr.cpu())
         self.scale_img()
         img = ImageTk.PhotoImage(image=self.img_arr)
         self.label.configure(image=img)
+        self.label.image = img  # keeping a reference to prevent garbage collection of img
         # self.label.update()
         # self.label.update_idletasks()
-        # self.fen1.update_idletasks()
+        self.fen1.update_idletasks()
 
     def init_img(self):
-        self.img_arr = self.sol.data_loader.dataset.__getitem__(0)
-        self.img_arr = Variable(
-            cuda(self.img_arr, self.sol.use_cuda), volatile=True).unsqueeze(0)
-        self.img_arr = get_image(tensor=self.img_arr.cpu())
         self.scale_img()
         img = ImageTk.PhotoImage(image=self.img_arr)
         # self.label = Label(self.can1, image=img)
