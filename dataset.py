@@ -43,7 +43,7 @@ def return_data(args):
     batch_size = args.batch_size
     num_workers = args.num_workers
     image_size = args.image_size
-    assert image_size == 64, 'currently only image size of 64 is supported'
+    # assert image_size == 64, 'currently only image size of 64 is supported'
 
     if name.lower() == '3dchairs':
         root = os.path.join(dset_dir, '3DChairs')
@@ -61,8 +61,16 @@ def return_data(args):
         train_kwargs = {'root': root, 'transform': transform}
         dset = CustomImageFolder
 
+    elif name.lower() == 'two_balls':
+        root = os.path.join(dset_dir, 'two_balls')
+        transform = transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(), ])
+        train_kwargs = {'root': root, 'transform': transform}
+        dset = CustomImageFolder
+
     elif name.lower() == 'cube_small':
-        root = os.path.join(dset_dir, 'cube_64_200_img')
+        root = os.path.join(dset_dir, 'cube_small')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
@@ -101,8 +109,8 @@ def return_data(args):
 if __name__ == '__main__':
     transform = transforms.Compose([
         transforms.Resize((64, 64)),
-        transforms.ToTensor(), ])
-
+        transforms.ToTensor(),])
+    # transform = transforms.ToTensor()
     dset = CustomImageFolder('data/CelebA', transform)
     loader = DataLoader(dset,
                         batch_size=32,

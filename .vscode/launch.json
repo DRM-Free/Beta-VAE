@@ -28,19 +28,23 @@
                 "--batch_size",
                 "64",
                 "--z_dim",
-                "3",
+                "20",
                 "--max_iter",
-                "1.5e4",
+                "1.6e4",
                 "--viz_name",
-                "cube_small_B_gamma5_z3",
+                "run_two_balls_B_gamma5_z20",
                 "--num_workers",
                 "0",
                 "--train",
-                "False",
+                "True",
                 "--gamma",
                 "5",
                 "--viz_on",
-                "False"
+                "False",
+                "--navigate_latent_space",
+                "False",
+                "--image_size",
+                "24"
             ]
         },
     ]

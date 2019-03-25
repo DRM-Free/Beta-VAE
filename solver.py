@@ -82,7 +82,7 @@ class Solver(object):
         self.use_cuda = args.cuda and torch.cuda.is_available()
         self.max_iter = args.max_iter
         self.global_iter = 0
-
+        self.im_size = args.image_size
         self.z_dim = args.z_dim
         self.beta = args.beta
         self.gamma = args.gamma
@@ -434,7 +434,7 @@ class Solver(object):
             os.makedirs(output_dir, exist_ok=True)
             gifs = torch.cat(gifs)
             gifs = gifs.view(len(Z), self.z_dim, len(
-                interpolation), self.nc, 64, 64).transpose(1, 2)
+                interpolation), self.nc, self.im_size, self.im_size).transpose(1, 2)
             for i, key in enumerate(Z.keys()):
                 for j, val in enumerate(interpolation):
                     save_image(tensor=gifs[i][j].cpu(),

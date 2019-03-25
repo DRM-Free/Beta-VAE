@@ -134,8 +134,10 @@ class BetaVAE_B(BetaVAE_H):
         mu = distributions[:, :self.z_dim]
         logvar = distributions[:, self.z_dim:]
         z = reparametrize(mu, logvar)
+        # print("x size : {} \n shape(decode(z)) : {}".format(
+        # x.size(), self._decode(z).shape()))
+        self._decode(z)
         x_recon = self._decode(z).view(x.size())
-
         return x_recon, mu, logvar
 
     def _encode(self, x):

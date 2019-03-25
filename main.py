@@ -84,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', default=2,
                         type=int, help='dataloader num_workers')
 
-    parser.add_argument('--viz_on', default=True,
+    parser.add_argument('--viz_on', default=False,
                         type=str2bool, help='enable visdom visualization')
     parser.add_argument('--viz_name', default='main',
                         type=str, help='visdom env name')
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                         type=str2bool, help='save traverse images and gif')
     parser.add_argument('--output_dir', default='outputs',
                         type=str, help='output directory')
-    parser.add_argument('--navigate_latent_space', default=True, type=str2bool,
+    parser.add_argument('--navigate_latent_space', default=False, type=str2bool,
                         help='Activate this for interactive latent space navigation after training')
 
     parser.add_argument('--gather_step', default=1000, type=int,
