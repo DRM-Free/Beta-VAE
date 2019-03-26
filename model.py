@@ -30,6 +30,7 @@ class BetaVAE_H(nn.Module):
         self.z_dim = z_dim
         self.nc = nc
         self.encoder = nn.Sequential(
+            # conv2d "groups" option for grouped convolution
             nn.Conv2d(nc, 32, 4, 2, 1),          # B,  32, 32, 32
             nn.ReLU(True),
             nn.Conv2d(32, 32, 4, 2, 1),          # B,  32, 16, 16
