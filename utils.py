@@ -60,3 +60,12 @@ def get_image(tensor, nrow=8, padding=2,
     ndarr = grid.mul(255).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
     im = Image.fromarray(ndarr)
     return im
+
+
+def load_images_from_folder(folder):
+    images = []
+    for filename in os.listdir(folder):
+        img = cv2.imread(os.path.join(folder, filename))
+        if img is not None:
+            images.append(img)
+    return images

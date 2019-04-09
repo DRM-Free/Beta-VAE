@@ -10,6 +10,10 @@
 # TODO maybe train encoder and decoder separately, encoder first to force camera position. But in this case is it even relevant to do
 # unsupervised learning ? enforcing a feature encoding between specific values and being able to merege and separate two features at will
 # would be more appealing
+# Todo code unicity :train an alternative encoder from camera position. If it can not be trained afterwards,
+# try to encourage code unicity directly during training (same loss function as the alternative encoder to add to encoder loss, not to
+# decoder loss)
+
 import argparse
 
 import numpy as np

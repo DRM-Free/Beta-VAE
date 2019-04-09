@@ -2,7 +2,6 @@
 
 import torch
 import torch.nn as nn
-#import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
 
@@ -85,6 +84,9 @@ class BetaVAE_H(nn.Module):
 class BetaVAE_B(BetaVAE_H):
     """Model proposed in understanding beta-VAE paper(Burgess et al, arxiv:1804.03599, 2018)."""
 
+    # import ant to know
+    # numpy image: H x W x C
+    # torch image: C X H X W
     def __init__(self, z_dim=10, nc=1):
         super(BetaVAE_B, self).__init__()
         self.nc = nc
@@ -166,7 +168,3 @@ def normal_init(m, mean, std):
         m.weight.data.fill_(1)
         if m.bias.data is not None:
             m.bias.data.zero_()
-
-
-if __name__ == '__main__':
-    pass

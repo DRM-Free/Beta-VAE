@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
+import pandas as pd
 
 
 def is_power_of_2(num):
@@ -22,7 +23,6 @@ class CustomImageFolder(ImageFolder):
         img = self.loader(path)
         if self.transform is not None:
             img = self.transform(img)
-
         return img
 
 
@@ -45,23 +45,15 @@ def return_data(args):
     image_size = args.image_size
     assert image_size == 64, 'currently only image size of 64 is supported'
 
-    if name.lower() == '3dchairs':
-        root = os.path.join(dset_dir, '3DChairs')
+    if name.lower() == 'cube_small':
+        root = os.path.join(dset_dir, 'cube_64_R_4_random_angles')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
         train_kwargs = {'root': root, 'transform': transform}
         dset = CustomImageFolder
 
-    elif name.lower() == 'celeba':
-        root = os.path.join(dset_dir, 'CelebA')
-        transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
-
-    elif name.lower() == 'cube_small':
+    elif name.lower() == 'cube_random_spherical_position':
         root = os.path.join(dset_dir, 'cube_64_random_spherical_position')
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
@@ -69,18 +61,15 @@ def return_data(args):
         train_kwargs = {'root': root, 'transform': transform}
         dset = CustomImageFolder
 
-    elif name.lower() == 'dsprites':
+    elif name.lower() == 'two_balls':
         root = os.path.join(
-            dset_dir, 'dsprites-dataset/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz')
-        if not os.path.exists(root):
-            import subprocess
-            print('Now download dsprites-dataset')
-            subprocess.call(['./download_dsprites.sh'])
-            print('Finished')
-        data = np.load(root, encoding='bytes')
-        data = torch.from_numpy(data['imgs']).unsqueeze(1).float()
-        train_kwargs = {'data_tensor': data}
-        dset = CustomTensorDataset
+            dset_dir, 'two_balls')
+        transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(), ])
+        train_kwargs = {'root': root, 'transform': transform}
+        dset = CustomImageFolder
 
     else:
         raise NotImplementedError
@@ -96,21 +85,3 @@ def return_data(args):
     data_loader = train_loader
 
     return data_loader
-
-
-if __name__ == '__main__':
-    transform = transforms.Compose([
-        transforms.Resize((64, 64)),
-        transforms.ToTensor(), ])
-
-    dset = CustomImageFolder('data/CelebA', transform)
-    loader = DataLoader(dset,
-                        batch_size=32,
-                        shuffle=True,
-                        num_workers=1,
-                        pin_memory=False,
-                        drop_last=True)
-
-    images1 = iter(loader).next()
-    import ipdb
-    ipdb.set_trace()

@@ -94,18 +94,15 @@ class Solver(object):
         self.beta1 = args.beta1
         self.beta2 = args.beta2
 
-        if args.dataset.lower() == 'dsprites':
-            self.nc = 1
-            self.decoder_dist = 'bernoulli'
-        elif args.dataset.lower() == '3dchairs':
-            self.nc = 3
-            self.decoder_dist = 'gaussian'
-        elif args.dataset.lower() == 'celeba':
-            self.nc = 3
-            self.decoder_dist = 'gaussian'
         elif args.dataset.lower() == 'cube_small':
             self.nc = 3
             self.decoder_dist = 'gaussian'
+        elif args.dataset.lower() == 'cube_random_spherical_position':
+            self.nc = 3
+            self.decoder_dist = 'gaussian'
+        elif args.dataset.lower() == 'two_balls':
+            self.nc = 1
+            self.decoder_dist = 'bernoulli'
         else:
             raise NotImplementedError
 
@@ -117,8 +114,10 @@ class Solver(object):
             raise NotImplementedError('only support model H or B')
 
         self.net = cuda(net(self.z_dim, self.nc), self.use_cuda)
-        self.optim = optim.Adam(self.net.parameters(), lr=self.lr,
-                                betas=(self.beta1, self.beta2))
+        # self.optim = optim.Adam(self.net.parameters(), lr=self.lr,
+        #                         betas=(self.beta1, self.beta2))
+        # self.optim = optim.RMSprop(params=self.net.parameters(), lr=self.lr)
+        self.optim = optim.Adadelta(params=self.net.parameters())
 
         self.viz_name = args.viz_name
         self.viz_port = args.viz_port
