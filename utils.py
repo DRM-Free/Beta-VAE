@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torchvision.utils import make_grid
-
+import cv2
 
 def cuda(tensor, uses_cuda):
     return tensor.cuda() if uses_cuda else tensor

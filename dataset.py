@@ -8,33 +8,107 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
 import pandas as pd
+from create_ambiguity_matrix import make_pairs
+import csv
+from create_ambiguity_matrix import get_cam_pos, get_ambiguities
+from sklearn.metrics import mean_squared_error, mutual_info_score
+from sklearn.preprocessing import scale
+import cv2
 
 
 def is_power_of_2(num):
     return ((num & (num - 1)) == 0) and num != 0
 
 
-class CustomImageFolder(ImageFolder):
+# class CustomImageFolder(ImageFolder):
+#     def __init__(self, root, transform=None):
+#         super(CustomImageFolder, self).__init__(root, transform)
+
+#     def __getitem__(self, index):
+#         path = self.imgs[index][0]
+#         img = self.loader(path)
+#         if self.transform is not None:
+#             img = self.transform(img)
+#         return img
+
+# This dataset class replaces CustomImageFolder
+# TODO test other color spaces some time
+class In_memory_dataset:
+
     def __init__(self, root, transform=None):
-        super(CustomImageFolder, self).__init__(root, transform)
+        # self.imgs = load_images_from_folder(root) #would not guarantee images are in the proper order
+        img_number = len(os.listdir(root))
+        self.imgs = [] * img_number
+        # Ensure images are loaded in proper order
+        for i in range(img_number):
+            img_name = "viewpoint" + str(i) + ".png"
+            self.imgs[i] = cv2.imread(os.path.join(root, "images",img_name))
+
+        self.transform = transform
+        # Get euclidean camera positions (list of [x,y,z]), TODO check that the file is correctly found
+        self.cam_pos = get_cam_pos(
+            os.path.join(root, root+".csv"), len(self.imgs))
 
     def __getitem__(self, index):
-        path = self.imgs[index][0]
-        img = self.loader(path)
+        img = self.imgs[index]
         if self.transform is not None:
             img = self.transform(img)
         return img
+# TODO replace by a function that gives position only. image is already provided by getitem
 
-
-class CustomTensorDataset(Dataset):
-    def __init__(self, data_tensor):
-        self.data_tensor = data_tensor
-
-    def __getitem__(self, index):
-        return self.data_tensor[index]
+    def get_pos(self, index):
+        return self.cam_pos[index]
 
     def __len__(self):
-        return self.data_tensor.size(0)
+        return len(self.imgs)
+
+
+# This secondary dataset is meant for paired ambiguity retreival and training of VAE encoder and Auxiliary Network (AN)
+# Notice : for ambiguity computation, images code should be available (call compute_codes first)
+class In_memory_paired_dataset:
+    # pos_file_name = "camera_data_cube_64_R_4_random_angles.csv"
+    # TODO make sure only part of the full dataset is given to paired dataset to prevent high number of pairs (recommended 100 elements)
+    # Actually pairwise ambiguity is computed only for a number of pairs equal to batch size (one pair per batch).
+    # FOr further optimization, keeping track of already computed ambiguity pairs and training several times with the same
+    # ambiguity data could be done
+
+    def __init__(self, image_dataset, pos_file_name, pool_size=100):
+        self.pairs, self.pairs_nb = make_pairs(pool_size)
+        self.image_dataset = image_dataset
+
+    def __getitem__(self, index):
+        concatenated_input = np.concatenate((
+            self.image_dataset.get_pos(self.pairs[index][0]), self.image_dataset.get_pos(self.pairs[index][1])), axis=0)
+        return concatenated_input
+
+    def __len__(self):
+        return self.pairs_nb
+
+    def compute_codes(self):
+        pass
+
+    def compute_pairwise_ambiguities(self):
+        img_MI = [0] * pairs_nb
+        img_errors = [0] * pairs_nb
+        cam_errors = [0] * pairs_nb
+        for index in range(self.pairs_nb):
+            cam_pos1 = self.image_dataset.get_pos(
+                self.pairs[index][0])
+            img1 = self.image_dataset.__getitem__(self.pairs[index][0])
+            cam_pos2 = self.image_dataset.get_pos(
+                self.pairs[index][1])
+            img2 = self.image_dataset.__getitem__(self.pairs[index][1])
+            img_errors[index] = mean_squared_error(img1, img2)
+            img_MI[index] = mutual_info_score(
+                np.reshape(img1, -1), np.reshape(img2, -1))
+            cam_errors[index] = mean_squared_error(cam_pos1, cam_pos2)
+        img_errors = scale(img_errors, axis=0, with_mean=True,
+                           with_std=True, copy=True)
+        img_MI = scale(img_MI, axis=0, with_mean=True,
+                       with_std=True, copy=True)
+        cam_errors = scale(cam_errors, axis=0, with_mean=True,
+                           with_std=True, copy=True)
+        ambiguities = cam_errors + (img_MI - img_errors) / 2
 
 
 def return_data(args):
@@ -51,7 +125,7 @@ def return_data(args):
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
         train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
+        dset = In_memory_dataset
 
     elif name.lower() == 'cube_random_spherical_position':
         root = os.path.join(dset_dir, 'cube_64_random_spherical_position')
@@ -59,7 +133,7 @@ def return_data(args):
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
         train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
+        dset = In_memory_dataset
 
     elif name.lower() == 'two_balls':
         root = os.path.join(
@@ -69,7 +143,7 @@ def return_data(args):
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
         train_kwargs = {'root': root, 'transform': transform}
-        dset = CustomImageFolder
+        dset = In_memory_dataset
 
     else:
         raise NotImplementedError
