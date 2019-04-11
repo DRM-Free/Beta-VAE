@@ -2,7 +2,6 @@ from scipy.stats import wasserstein_distance
 from sklearn.preprocessing import scale
 from math import cos, sin
 import os
-# from PIL import Image
 import cv2
 import numpy as np
 import matplotlib.mlab as mlab
@@ -46,9 +45,10 @@ def plot_hist(x, title):
 
 def get_cam_pos(camera_pos_file, img_nb):
     # get all camera positions for comparison
-    cam_pos = [0]*img_nb
+    cam_pos = [None]*img_nb
     with open(camera_pos_file, 'r') as csvfile:
         header = csvfile.readline()  # view_no,theta,phi
+        radius = 4
         line = csvfile.readline()
         line = str(line)
         line = line.split(',', 2)
@@ -122,7 +122,12 @@ def get_ambiguities(folder, pairs, pairs_nb, ambiguities_only=True):
     img_MI = scale(img_MI, axis=0, with_mean=True,
                    with_std=True, copy=True)
     # compute ambiguity metrics (if the img_errors contains mutual information instead of errors, compute sum instead of difference)
+    # Ambiguities for adversarial network
     ambiguities = cam_errors + (img_MI - img_errors) / 2
+
+    # Similarities for auxiliary network
+    # ambiguities = (img_MI + img_errors) / 2 - cam_errors
+
     if ambiguities_only:
         return ambiguities
     else:
@@ -144,7 +149,6 @@ if __name__ == "__main__":
     s = set(range(pairs_nb))
     ambiguity_table = dict.fromkeys(s)
 
-    camera_pos_file = os.path.join("data", camera_pos_file)
     cam_pos = get_cam_pos(camera_pos_file, img_nb)
 
     img_errors, img_MI, cam_errors, ambiguities = get_ambiguities(

@@ -21,8 +21,11 @@ class View(nn.Module):
         return tensor.view(self.size)
 
 # Auxiliary network takes a pair of encoded images as input and tries to determine the pairwise ambiguity between those images
+
+
 class Auxiliary_network(nn.Module):
     def __init__(self, z_dim):
+        super(Auxiliary_network, self).__init__()
         self.z_dim = z_dim
         self.net = nn.Sequential(
             nn.Linear(2*z_dim, 50),
@@ -32,8 +35,17 @@ class Auxiliary_network(nn.Module):
             nn.Linear(2*z_dim, 50),
             torch.nn.LeakyReLU(),
             nn.Linear(2*z_dim, 1),
-            torch.nn.Sigmoid()
+            nn.Sigmoid()
         )
+        self.weight_init()
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, x):
+        return self.net(x)
 
 
 class BetaVAE_H(nn.Module):

@@ -14,6 +14,8 @@ from create_ambiguity_matrix import get_cam_pos, get_ambiguities
 from sklearn.metrics import mean_squared_error, mutual_info_score
 from sklearn.preprocessing import scale
 import cv2
+from tqdm import tqdm
+from PIL import Image
 
 
 def is_power_of_2(num):
@@ -35,19 +37,24 @@ def is_power_of_2(num):
 # TODO test other color spaces some time
 class In_memory_dataset:
 
-    def __init__(self, root, transform=None):
+    def __init__(self, dset_dir, file, transform=None):
         # self.imgs = load_images_from_folder(root) #would not guarantee images are in the proper order
-        img_number = len(os.listdir(root))
-        self.imgs = [] * img_number
+        image_folder = os.path.join(dset_dir, file, "images")
+        img_number = len(os.listdir(image_folder))
+        self.imgs = [None] * img_number
         # Ensure images are loaded in proper order
+        pbar = tqdm(total=img_number)
+        print("loading the dataset in memory (", img_number, ") images")
         for i in range(img_number):
             img_name = "viewpoint" + str(i) + ".png"
-            self.imgs[i] = cv2.imread(os.path.join(root, "images",img_name))
-
+            # self.imgs[i] = cv2.imread(os.path.join(image_folder, img_name))
+            self.imgs[i] = Image.open(os.path.join(image_folder, img_name))
+            pbar.update(1)
+        pbar.close()
         self.transform = transform
         # Get euclidean camera positions (list of [x,y,z]), TODO check that the file is correctly found
         self.cam_pos = get_cam_pos(
-            os.path.join(root, root+".csv"), len(self.imgs))
+            os.path.join(dset_dir, "camera_data_"+file + ".csv"), len(self.imgs))
 
     def __getitem__(self, index):
         img = self.imgs[index]
@@ -88,6 +95,7 @@ class In_memory_paired_dataset:
         pass
 
     def compute_pairwise_ambiguities(self):
+        pairs_nb = self.pairs_nb
         img_MI = [0] * pairs_nb
         img_errors = [0] * pairs_nb
         cam_errors = [0] * pairs_nb
@@ -109,9 +117,10 @@ class In_memory_paired_dataset:
         cam_errors = scale(cam_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
         ambiguities = cam_errors + (img_MI - img_errors) / 2
+        self.ambiguities = ambiguities
 
 
-def return_data(args):
+def get_image_dataloader(args):
     name = args.dataset
     dset_dir = args.dset_dir
     batch_size = args.batch_size
@@ -120,29 +129,31 @@ def return_data(args):
     assert image_size == 64, 'currently only image size of 64 is supported'
 
     if name.lower() == 'cube_small':
-        root = os.path.join(dset_dir, 'cube_64_R_4_random_angles')
+        file = 'cube_64_R_4_random_angles'
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
+        train_kwargs = {'dset_dir': dset_dir,
+                        'file': file, 'transform': transform}
         dset = In_memory_dataset
 
     elif name.lower() == 'cube_random_spherical_position':
-        root = os.path.join(dset_dir, 'cube_64_random_spherical_position')
+        file = 'cube_64_random_spherical_position'
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
+        train_kwargs = {'dset_dir': dset_dir,
+                        'file': file, 'transform': transform}
         dset = In_memory_dataset
 
     elif name.lower() == 'two_balls':
-        root = os.path.join(
-            dset_dir, 'two_balls')
+        file = 'two_balls'
         transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(), ])
-        train_kwargs = {'root': root, 'transform': transform}
+        train_kwargs = {'dset_dir': dset_dir,
+                        'file': file, 'transform': transform}
         dset = In_memory_dataset
 
     else:
@@ -155,7 +166,17 @@ def return_data(args):
                               num_workers=num_workers,
                               pin_memory=True,
                               drop_last=True)
-
     data_loader = train_loader
-
     return data_loader
+
+# TODO verify dataloader
+
+
+def get_pairwise_dataloader(args):
+    dset = In_memory_paired_dataset
+    return DataLoader(dset,
+                      batch_size=args.batch_size,
+                      shuffle=True,
+                      num_workers=args.num_workers,
+                      pin_memory=True,
+                      drop_last=True)

@@ -36,7 +36,8 @@ def main(args):
     net = Solver(args)
 
     if args.train:
-        net.train()
+        # net.train()
+        net.auxiliary_training()
     else:
         net.viz_traverse()
     if args.navigate_latent_space:

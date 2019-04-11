@@ -14,8 +14,9 @@ from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
 
 from utils import cuda, grid2gif, get_image
-from model import BetaVAE_H, BetaVAE_B
-from dataset import return_data
+from model import BetaVAE_H, BetaVAE_B, Auxiliary_network
+# TODO replace the return_data method by one return_pairwise_ambiguities and return_images methods
+from dataset import get_image_dataloader
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -94,7 +95,7 @@ class Solver(object):
         self.beta1 = args.beta1
         self.beta2 = args.beta2
 
-        elif args.dataset.lower() == 'cube_small':
+        if args.dataset.lower() == 'cube_small':
             self.nc = 3
             self.decoder_dist = 'gaussian'
         elif args.dataset.lower() == 'cube_random_spherical_position':
@@ -106,18 +107,20 @@ class Solver(object):
         else:
             raise NotImplementedError
 
+        # Create main network
         if args.model == 'H':
-            net = BetaVAE_H
+            VAE_net = BetaVAE_H
         elif args.model == 'B':
-            net = BetaVAE_B
+            VAE_net = BetaVAE_B
         else:
             raise NotImplementedError('only support model H or B')
+        self.VAE_net = cuda(VAE_net(self.z_dim, self.nc), self.use_cuda)
 
-        self.net = cuda(net(self.z_dim, self.nc), self.use_cuda)
-        # self.optim = optim.Adam(self.net.parameters(), lr=self.lr,
-        #                         betas=(self.beta1, self.beta2))
-        # self.optim = optim.RMSprop(params=self.net.parameters(), lr=self.lr)
-        self.optim = optim.Adadelta(params=self.net.parameters())
+        # Maybe add option for optionnal auxiliary network
+        # Create auxiliary network
+        self.Auxiliary_net = cuda(Auxiliary_network(self.z_dim), self.use_cuda)
+        self.VAE_optim = optim.Adadelta(params=self.VAE_net.parameters())
+        self.Aux_optim = optim.Adadelta(params=self.Auxiliary_net.parameters())
 
         self.viz_name = args.viz_name
         self.viz_port = args.viz_port
@@ -148,7 +151,7 @@ class Solver(object):
         self.dset_dir = args.dset_dir
         self.dataset = args.dataset
         self.batch_size = args.batch_size
-        self.data_loader = return_data(args)
+        self.VAE_data_loader = get_image_dataloader(args)
 
         self.gather = DataGather()
 
@@ -162,12 +165,12 @@ class Solver(object):
         pbar.update(self.global_iter)
         # Train VAE alongside Auxiliary Network
         while not out:
-            for x in self.data_loader:
+            for x in self.VAE_data_loader:
                 self.global_iter += 1
                 pbar.update(1)
 
                 x = Variable(cuda(x, self.use_cuda))
-                x_recon, mu, logvar = self.net(x)
+                x_recon, mu, logvar = self.VAE_net(x)
                 recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
                 total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
 
@@ -178,9 +181,9 @@ class Solver(object):
                                     self.global_iter, 0, self.C_max.data[0])
                     beta_vae_loss = recon_loss + self.gamma*(total_kld-C).abs()
 
-                self.optim.zero_grad()
+                self.VAE_optim.zero_grad()
                 beta_vae_loss.backward()
-                self.optim.step()
+                self.VAE_optim.step()
 
                 if self.viz_on and self.global_iter % self.gather_step == 0:
                     self.gather.insert(iter=self.global_iter,
@@ -220,6 +223,82 @@ class Solver(object):
         pbar.write("[Training Finished]")
         pbar.close()
 
+    def auxiliary_training(self):
+        self.net_mode(train=True)
+        self.C_max = Variable(
+            cuda(torch.FloatTensor([self.C_max]), self.use_cuda))
+        out = False
+
+        pbar = tqdm(total=self.max_iter)
+        pbar.update(self.global_iter)
+        # Train VAE alongside Auxiliary Network
+        while not out:
+            for x in self.VAE_data_loader:
+                self.global_iter += 1
+                pbar.update(1)
+
+                x = Variable(cuda(x, self.use_cuda))
+                x_recon, mu, logvar = self.VAE_net(x)
+                recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+                total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+
+                if self.objective == 'H':
+                    beta_vae_loss = recon_loss + self.beta*total_kld
+                elif self.objective == 'B':
+                    C = torch.clamp(self.C_max/self.C_stop_iter *
+                                    self.global_iter, 0, self.C_max.data[0])
+                    beta_vae_loss = recon_loss + self.gamma*(total_kld-C).abs()
+
+                self.VAE_optim.zero_grad()
+                beta_vae_loss.backward()
+                self.VAE_optim.step()
+
+                if self.viz_on and self.global_iter % self.gather_step == 0:
+                    self.gather.insert(iter=self.global_iter,
+                                       mu=mu.mean(0).data, var=logvar.exp().mean(
+                                           0).data,
+                                       recon_loss=recon_loss.data, total_kld=total_kld.data,
+                                       dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
+
+                if self.global_iter % self.display_step == 0:
+                    pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
+                        self.global_iter, recon_loss.item(), total_kld.item(), mean_kld.item()))
+
+                    var = logvar.exp().mean(0).data
+                    var_str = ''
+                    for j, var_j in enumerate(var):
+                        var_str += 'var{}:{:.4f} '.format(j+1, var_j)
+                    pbar.write(var_str)
+
+                    if self.objective == 'B':
+                        pbar.write('C:{:.3f}'.format(C.data[0]))
+
+                    if self.save_output:
+                        self.viz_traverse()
+
+                if self.global_iter % self.save_step == 0:
+                    self.save_checkpoint('last')
+                    pbar.write('Saved checkpoint(iter:{})'.format(
+                        self.global_iter))
+
+                if self.global_iter % 50000 == 0:
+                    self.save_checkpoint(str(self.global_iter))
+
+                if self.global_iter >= self.max_iter:
+                    out = True
+                    break
+
+        pbar.write("[Training Finished]")
+        pbar.close()
+
+    def encoder_auxiliary_training(self):
+        self.Aux_optim.zero_grad()
+        self.Auxiliary_net.
+        pass
+
+    def train_decoder(self):
+        pass
+
     def viz_reconstruction(self):
         self.net_mode(train=False)
         x = self.gather.data['images'][0][:100]
@@ -235,14 +314,14 @@ class Solver(object):
         self.net_mode(train=False)
         import random
 
-        decoder = self.net.decoder
-        encoder = self.net.encoder
+        decoder = self.VAE_net.decoder
+        encoder = self.VAE_net.encoder
         interpolation = torch.arange(-limit, limit+0.1, inter)
 
-        n_dsets = len(self.data_loader.dataset)
+        n_dsets = len(self.VAE_data_loader.dataset)
         rand_idx = random.randint(1, n_dsets-1)
 
-        random_img = self.data_loader.dataset.__getitem__(rand_idx)
+        random_img = self.VAE_data_loader.dataset.__getitem__(rand_idx)
         random_img = Variable(
             cuda(random_img, self.use_cuda), volatile=True).unsqueeze(0)
         random_img_z = encoder(random_img)[:, :self.z_dim]
@@ -251,7 +330,7 @@ class Solver(object):
                                  self.use_cuda), volatile=True)
 
         fixed_idx = 0
-        fixed_img = self.data_loader.dataset.__getitem__(fixed_idx)
+        fixed_img = self.VAE_data_loader.dataset.__getitem__(fixed_idx)
         fixed_img = Variable(
             cuda(fixed_img, self.use_cuda), volatile=True).unsqueeze(0)
         fixed_img_z = encoder(fixed_img)[:, :self.z_dim]
@@ -300,13 +379,13 @@ class Solver(object):
             raise('Only bool type is supported. True or False')
 
         if train:
-            self.net.train()
+            self.VAE_net.train()
         else:
-            self.net.eval()
+            self.VAE_net.eval()
 
     def save_checkpoint(self, filename, silent=True):
-        model_states = {'net': self.net.state_dict(), }
-        optim_states = {'optim': self.optim.state_dict(), }
+        model_states = {'net': self.VAE_net.state_dict(), }
+        optim_states = {'optim': self.VAE_optim.state_dict(), }
         win_states = {'recon': self.win_recon,
                       'kld': self.win_kld,
                       'mu': self.win_mu,
@@ -332,8 +411,8 @@ class Solver(object):
             self.win_kld = checkpoint['win_states']['kld']
             self.win_var = checkpoint['win_states']['var']
             self.win_mu = checkpoint['win_states']['mu']
-            self.net.load_state_dict(checkpoint['model_states']['net'])
-            self.optim.load_state_dict(checkpoint['optim_states']['optim'])
+            self.VAE_net.load_state_dict(checkpoint['model_states']['net'])
+            self.VAE_optim.load_state_dict(checkpoint['optim_states']['optim'])
             print("=> loaded checkpoint '{} (iter {})'".format(
                 file_path, self.global_iter))
         else:
