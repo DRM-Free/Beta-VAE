@@ -28,14 +28,13 @@ class Auxiliary_network(nn.Module):
         super(Auxiliary_network, self).__init__()
         self.z_dim = z_dim
         self.net = nn.Sequential(
-            nn.Linear(2*z_dim, 50),
+            nn.Linear(2*z_dim, 10),
             torch.nn.LeakyReLU(),
-            nn.Linear(2*z_dim, 50),
+            nn.Linear(10, 10),
             torch.nn.LeakyReLU(),
-            nn.Linear(2*z_dim, 50),
-            torch.nn.LeakyReLU(),
-            nn.Linear(2*z_dim, 1),
-            nn.Sigmoid()
+            nn.Linear(10, 1),
+            nn.Hardtanh()
+            # nn.LogSigmoid()
         )
         self.weight_init()
 

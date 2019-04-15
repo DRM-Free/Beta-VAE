@@ -16,6 +16,8 @@ from sklearn.preprocessing import scale
 import cv2
 from tqdm import tqdm
 from PIL import Image
+from random import sample
+from operator import itemgetter
 
 
 def is_power_of_2(num):
@@ -60,8 +62,8 @@ class In_memory_dataset:
         img = self.imgs[index]
         if self.transform is not None:
             img = self.transform(img)
+            # img.requires_grad = True
         return img
-# TODO replace by a function that gives position only. image is already provided by getitem
 
     def get_pos(self, index):
         return self.cam_pos[index]
@@ -73,26 +75,55 @@ class In_memory_dataset:
 # This secondary dataset is meant for paired ambiguity retreival and training of VAE encoder and Auxiliary Network (AN)
 # Notice : for ambiguity computation, images code should be available (call compute_codes first)
 class In_memory_paired_dataset:
-    # pos_file_name = "camera_data_cube_64_R_4_random_angles.csv"
-    # TODO make sure only part of the full dataset is given to paired dataset to prevent high number of pairs (recommended 100 elements)
     # Actually pairwise ambiguity is computed only for a number of pairs equal to batch size (one pair per batch).
     # FOr further optimization, keeping track of already computed ambiguity pairs and training several times with the same
     # ambiguity data could be done
 
-    def __init__(self, image_dataset, pos_file_name, pool_size=100):
+    def __init__(self, image_dataset, pool_size=100, transform=None):
+        self.transform = transform
         self.pairs, self.pairs_nb = make_pairs(pool_size)
         self.image_dataset = image_dataset
+        self.pool_size = pool_size
+        self.sample_images()
+
+    def sample_images(self):
+        self.pick_images()
+        self.compute_pairwise_ambiguities()
+
+    def pick_images(self):
+        # Generate n distinct integers within image dataset
+        self.imgs = [None]*self.pool_size
+        img_indexes = sample(
+            range(0, self.image_dataset.__len__()), self.pool_size)
+        self.imgs = list(itemgetter(*img_indexes)(self.image_dataset.imgs))
+        # img_indexes[i] is the corresponding index in the image dataset for an image of index i in self.imgs of the pairwise dataset
+        self.img_indexes = img_indexes
 
     def __getitem__(self, index):
-        concatenated_input = np.concatenate((
-            self.image_dataset.get_pos(self.pairs[index][0]), self.image_dataset.get_pos(self.pairs[index][1])), axis=0)
-        return concatenated_input
+        # Return pair of images indexes and supervised ambiguity expectation
+        # img_indexes = self.pairs[self.img_indexes[index]] # can not extract images from dataloader this way
+        # TODO maybe remove self.imgs, as images are also stored in the image dataset
+        # im1 = self. imgs[self.pairs[index][0]] #those images are untransformed, thus not in tensor form
+        # im2 = self.imgs[self.pairs[index][1]]
+        # TODO fix getitem to make images pair and supervised information available at the same time
+        im1 = self.image_dataset.__getitem__(
+            self.img_indexes[self.pairs[index][0]])
+        im2 = self.image_dataset.__getitem__(
+            self.img_indexes[self.pairs[index][1]])
+        # TODO check concatentation axis, check items are returned as tensors when required
+        imgs = (im1, im2)
+        # ambiguity = torch.FloatTensor(
+        # self.ambiguities[index])
+        ambiguity = self.ambiguities[index]
+        # self.ambiguities[index], dtype = torch.float64, requires_grad = True)
+
+        return imgs, ambiguity
+
+    # def get_ambiguity(self, index):
+    #     return self.transform(self.ambiguities[index])
 
     def __len__(self):
         return self.pairs_nb
-
-    def compute_codes(self):
-        pass
 
     def compute_pairwise_ambiguities(self):
         pairs_nb = self.pairs_nb
@@ -100,15 +131,18 @@ class In_memory_paired_dataset:
         img_errors = [0] * pairs_nb
         cam_errors = [0] * pairs_nb
         for index in range(self.pairs_nb):
-            cam_pos1 = self.image_dataset.get_pos(
-                self.pairs[index][0])
-            img1 = self.image_dataset.__getitem__(self.pairs[index][0])
-            cam_pos2 = self.image_dataset.get_pos(
-                self.pairs[index][1])
-            img2 = self.image_dataset.__getitem__(self.pairs[index][1])
+            position_index_1 = self.img_indexes[self.pairs[index][0]]
+            position_index_2 = self.img_indexes[self.pairs[index][1]]
+            cam_pos1 = self.image_dataset.get_pos(position_index_1)
+            img1 = self.imgs[self.pairs[index][0]]
+            cam_pos2 = self.image_dataset.get_pos(position_index_2)
+            img2 = self.imgs[self.pairs[index][1]]
+            img1 = np.array(img1)
+            img1 = np.reshape(img1, -1)
+            img2 = np.array(img2)
+            img2 = np.reshape(img2, -1)
             img_errors[index] = mean_squared_error(img1, img2)
-            img_MI[index] = mutual_info_score(
-                np.reshape(img1, -1), np.reshape(img2, -1))
+            img_MI[index] = mutual_info_score(img1, img2)
             cam_errors[index] = mean_squared_error(cam_pos1, cam_pos2)
         img_errors = scale(img_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
@@ -116,7 +150,11 @@ class In_memory_paired_dataset:
                        with_std=True, copy=True)
         cam_errors = scale(cam_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
+        # ambiguity, to be maximized by Adversarial Net and minimized by VAE
+        # ambiguities = (img_MI + img_errors) / 2 - cam_errors
+        # Similarity, to be maximized by auxiliary net and VAE
         ambiguities = cam_errors + (img_MI - img_errors) / 2
+
         self.ambiguities = ambiguities
 
 
@@ -124,7 +162,7 @@ def get_image_dataloader(args):
     name = args.dataset
     dset_dir = args.dset_dir
     batch_size = args.batch_size
-    num_workers = args.num_workers
+    num_workers = int(np.floor(args.num_workers/2))
     image_size = args.image_size
     assert image_size == 64, 'currently only image size of 64 is supported'
 
@@ -163,20 +201,24 @@ def get_image_dataloader(args):
     train_loader = DataLoader(train_data,
                               batch_size=batch_size,
                               shuffle=True,
-                              num_workers=num_workers,
+                              #   num_workers=num_workers,
+                              num_workers=0,
                               pin_memory=True,
                               drop_last=True)
     data_loader = train_loader
-    return data_loader
+    return data_loader, train_data
 
-# TODO verify dataloader
+# TODO verify that shuffling of both dataloaders does not mismatch supervised training data
 
 
-def get_pairwise_dataloader(args):
-    dset = In_memory_paired_dataset
+def get_pairwise_dataloader(im_dataset, args):
+    transform = transforms.ToTensor()
+    dset = In_memory_paired_dataset(
+        im_dataset, transform=transform, pool_size=80)
     return DataLoader(dset,
                       batch_size=args.batch_size,
                       shuffle=True,
-                      num_workers=args.num_workers,
+                      num_workers=0,
+                      #   num_workers=int(np.floor(args.num_workers/2)),
                       pin_memory=True,
                       drop_last=True)

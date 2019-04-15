@@ -15,8 +15,7 @@ from torchvision.utils import make_grid, save_image
 
 from utils import cuda, grid2gif, get_image
 from model import BetaVAE_H, BetaVAE_B, Auxiliary_network
-# TODO replace the return_data method by one return_pairwise_ambiguities and return_images methods
-from dataset import get_image_dataloader
+from dataset import get_image_dataloader, get_pairwise_dataloader
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -80,10 +79,11 @@ class DataGather(object):
 
 class Solver(object):
     def __init__(self, args):
+        self.args = args
+        self.use_cuda = True
         self.use_cuda = args.cuda and torch.cuda.is_available()
         self.max_iter = args.max_iter
         self.global_iter = 0
-
         self.z_dim = args.z_dim
         self.beta = args.beta
         self.gamma = args.gamma
@@ -151,24 +151,28 @@ class Solver(object):
         self.dset_dir = args.dset_dir
         self.dataset = args.dataset
         self.batch_size = args.batch_size
-        self.VAE_data_loader = get_image_dataloader(args)
-
+        # Initial image data is accessed by Auxiliary dataset from VAE dataset
+        self.VAE_data_loader, im_dataset = get_image_dataloader(args)
+        self.Aux_data_loader = get_pairwise_dataloader(im_dataset, args)
+        self.im_dataset = im_dataset
         self.gather = DataGather()
 
-    def train(self):
+    def init_train(self):
         self.net_mode(train=True)
         self.C_max = Variable(
             cuda(torch.FloatTensor([self.C_max]), self.use_cuda))
-        out = False
 
         pbar = tqdm(total=self.max_iter)
         pbar.update(self.global_iter)
-        # Train VAE alongside Auxiliary Network
-        while not out:
-            for x in self.VAE_data_loader:
-                self.global_iter += 1
-                pbar.update(1)
+        return pbar
 
+    def end_train(self, pbar):
+        pbar.write("[Training Finished]")
+        pbar.close()
+
+    def train(self, pbar, num_steps):
+        for x in self.VAE_data_loader:
+            for i in range(num_steps):
                 x = Variable(cuda(x, self.use_cuda))
                 x_recon, mu, logvar = self.VAE_net(x)
                 recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
@@ -191,110 +195,65 @@ class Solver(object):
                                            0).data,
                                        recon_loss=recon_loss.data, total_kld=total_kld.data,
                                        dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
-
-                if self.global_iter % self.display_step == 0:
-                    pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
-                        self.global_iter, recon_loss.item(), total_kld.item(), mean_kld.item()))
-
-                    var = logvar.exp().mean(0).data
-                    var_str = ''
-                    for j, var_j in enumerate(var):
-                        var_str += 'var{}:{:.4f} '.format(j+1, var_j)
-                    pbar.write(var_str)
-
-                    if self.objective == 'B':
-                        pbar.write('C:{:.3f}'.format(C.data[0]))
-
-                    if self.save_output:
-                        self.viz_traverse()
-
-                if self.global_iter % self.save_step == 0:
-                    self.save_checkpoint('last')
-                    pbar.write('Saved checkpoint(iter:{})'.format(
-                        self.global_iter))
-
-                if self.global_iter % 50000 == 0:
-                    self.save_checkpoint(str(self.global_iter))
-
-                if self.global_iter >= self.max_iter:
-                    out = True
-                    break
-
-        pbar.write("[Training Finished]")
-        pbar.close()
+            self.global_iter += 1
+            pbar.update(1)
 
     def auxiliary_training(self):
-        self.net_mode(train=True)
-        self.C_max = Variable(
-            cuda(torch.FloatTensor([self.C_max]), self.use_cuda))
-        out = False
+        pbar = self.init_train()
+        nb_phases = int(10)
+        max_iter = self.max_iter
+        num_steps = int(np.ceil(max_iter/nb_phases))
+        for training_phase in range(nb_phases):
 
-        pbar = tqdm(total=self.max_iter)
-        pbar.update(self.global_iter)
-        # Train VAE alongside Auxiliary Network
-        while not out:
-            for x in self.VAE_data_loader:
-                self.global_iter += 1
-                pbar.update(1)
+            # Deactivate gradients for decoder part for auxiliary training
+            for param in self.VAE_net.decoder.parameters():
+                param.requires_grad = False
+            self.encoder_auxiliary_training()
 
-                x = Variable(cuda(x, self.use_cuda))
-                x_recon, mu, logvar = self.VAE_net(x)
-                recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
-                total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+            # Reactivate gradients for decoder part
+            for param in self.VAE_net.decoder.parameters():
+                param.requires_grad = True
 
-                if self.objective == 'H':
-                    beta_vae_loss = recon_loss + self.beta*total_kld
-                elif self.objective == 'B':
-                    C = torch.clamp(self.C_max/self.C_stop_iter *
-                                    self.global_iter, 0, self.C_max.data[0])
-                    beta_vae_loss = recon_loss + self.gamma*(total_kld-C).abs()
+            self.train(pbar, num_steps)
+            if training_phase == nb_phases:
+                save_name = 'last'
+            else:
+                save_name = 'phase{}'.format(training_phase)
+                # TODO check that auxiliary network is well saved and loaded
+            self.save_checkpoint(save_name)
+            self.viz_traverse()
+        self.end_train(pbar)
 
-                self.VAE_optim.zero_grad()
-                beta_vae_loss.backward()
-                self.VAE_optim.step()
-
-                if self.viz_on and self.global_iter % self.gather_step == 0:
-                    self.gather.insert(iter=self.global_iter,
-                                       mu=mu.mean(0).data, var=logvar.exp().mean(
-                                           0).data,
-                                       recon_loss=recon_loss.data, total_kld=total_kld.data,
-                                       dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
-
-                if self.global_iter % self.display_step == 0:
-                    pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
-                        self.global_iter, recon_loss.item(), total_kld.item(), mean_kld.item()))
-
-                    var = logvar.exp().mean(0).data
-                    var_str = ''
-                    for j, var_j in enumerate(var):
-                        var_str += 'var{}:{:.4f} '.format(j+1, var_j)
-                    pbar.write(var_str)
-
-                    if self.objective == 'B':
-                        pbar.write('C:{:.3f}'.format(C.data[0]))
-
-                    if self.save_output:
-                        self.viz_traverse()
-
-                if self.global_iter % self.save_step == 0:
-                    self.save_checkpoint('last')
-                    pbar.write('Saved checkpoint(iter:{})'.format(
-                        self.global_iter))
-
-                if self.global_iter % 50000 == 0:
-                    self.save_checkpoint(str(self.global_iter))
-
-                if self.global_iter >= self.max_iter:
-                    out = True
-                    break
-
-        pbar.write("[Training Finished]")
-        pbar.close()
-
+    # Adversarial or Cooperative training of VAE encoder and auxiliary network
+    # TODO verify proper shuffling of data
+    # TODO verify autograd : is the gradient properly computed ?
     def encoder_auxiliary_training(self):
-        self.Aux_optim.zero_grad()
-        self.Auxiliary_net.
-        pass
+        # Pairwise ambiguities are expensive to compute, so we use it several times each epoch
+        # TODO change range here to reuse supervised data each epoch
+        for _, data in enumerate(self.Aux_data_loader, 0):
+            imgs, ambiguity = data
+            # for ambiguity, imgs in self.Aux_data_loader:
+            # TODO check images are passed properly by dataloader
+            img0 = imgs[0].cuda()
+            img1 = imgs[1].cuda()
+            code1 = self.VAE_net._encode(img0)
+            code2 = self.VAE_net._encode(img1)
+            # TODO check codes are concatenated in the proper dimension
+            AUX_net_input = torch.cat((code1, code2), 0)
+            Aux_output = self.Auxiliary_net.forward(AUX_net_input)
+            ambiguity = cuda(ambiguity.float(), self.use_cuda)
+            Aux_loss = F.mse_loss(
+                Aux_output, ambiguity, size_average=False).div(self.batch_size)
+            self.Aux_optim.zero_grad()
+            self.VAE_optim.zero_grad()
+            # TODO make sure this loss is good for the selected task (adversarial, auxiliary) and is applied to both trainings
+            Aux_loss.backward()
+            # TODO check that these steps update the required weights
+            self.Aux_optim.step()
+            self.VAE_optim.step()
+        # Refresh pairwise dataset from image dataset
+            self.Aux_data_loader = get_pairwise_dataloader(
+                self.im_dataset, self.args)
 
     def train_decoder(self):
         pass
@@ -328,7 +287,6 @@ class Solver(object):
 
         random_z = Variable(cuda(torch.rand(1, self.z_dim),
                                  self.use_cuda), volatile=True)
-
         fixed_idx = 0
         fixed_img = self.VAE_data_loader.dataset.__getitem__(fixed_idx)
         fixed_img = Variable(
@@ -384,8 +342,10 @@ class Solver(object):
             self.VAE_net.eval()
 
     def save_checkpoint(self, filename, silent=True):
-        model_states = {'net': self.VAE_net.state_dict(), }
-        optim_states = {'optim': self.VAE_optim.state_dict(), }
+        model_states = {'VAE_net': self.VAE_net.state_dict(
+        ), 'AUX_net': self.Auxiliary_net.state_dict()}
+        optim_states = {'VAE_optim': self.VAE_optim.state_dict(
+        ), 'Aux_optim': self.Aux_optim.state_dict(), }
         win_states = {'recon': self.win_recon,
                       'kld': self.win_kld,
                       'mu': self.win_mu,
@@ -411,8 +371,13 @@ class Solver(object):
             self.win_kld = checkpoint['win_states']['kld']
             self.win_var = checkpoint['win_states']['var']
             self.win_mu = checkpoint['win_states']['mu']
-            self.VAE_net.load_state_dict(checkpoint['model_states']['net'])
-            self.VAE_optim.load_state_dict(checkpoint['optim_states']['optim'])
+            self.VAE_net.load_state_dict(checkpoint['model_states']['VAE_net'])
+            self.VAE_optim.load_state_dict(
+                checkpoint['optim_states']['VAE_optim'])
+            self.Auxiliary_net.load_state_dict(
+                checkpoint['model_states']['AUX_net'])
+            self.Aux_optim.load_state_dict(
+                checkpoint['optim_states']['Aux_optim'])
             print("=> loaded checkpoint '{} (iter {})'".format(
                 file_path, self.global_iter))
         else:

@@ -37,6 +37,7 @@ def main(args):
 
     if args.train:
         # net.train()
+        # Warning ! Auxiliary training should be made in one execution only, as auxiliary network is not saved to drive yet
         net.auxiliary_training()
     else:
         net.viz_traverse()
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', default=1, type=int, help='random seed')
     parser.add_argument('--cuda', default=True,
                         type=str2bool, help='enable cuda')
-    parser.add_argument('--max_iter', default=1e6, type=float,
+    parser.add_argument('--max_iter', default=1e4, type=float,
                         help='maximum training iteration')
     parser.add_argument('--batch_size', default=64,
                         type=int, help='batch size')
@@ -102,11 +103,11 @@ if __name__ == "__main__":
     parser.add_argument('--navigate_latent_space', default=True, type=str2bool,
                         help='Activate this for interactive latent space navigation after training')
 
-    parser.add_argument('--gather_step', default=1000, type=int,
+    parser.add_argument('--gather_step', default=500, type=int,
                         help='numer of iterations after which data is gathered for visdom')
-    parser.add_argument('--display_step', default=2000, type=int,
+    parser.add_argument('--display_step', default=500, type=int,
                         help='number of iterations after which loss data is printed and visdom is updated')
-    parser.add_argument('--save_step', default=1000, type=int,
+    parser.add_argument('--save_step', default=500, type=int,
                         help='number of iterations after which a checkpoint is saved')
 
     parser.add_argument('--ckpt_dir', default='checkpoints',

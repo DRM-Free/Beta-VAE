@@ -11,20 +11,29 @@ import csv
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mutual_info_score
 # generate distinct pairs without permutations (n*(n-1)/2 pairs with n dataset size)
+import pickle
 
 
 def make_pairs(n):
-    pairs_nb = int(n*(n-1)/2)
-    print("generating {} pairs from {} elements".format(pairs_nb, n))
-    bar = tqdm(pairs_nb)
-    pairs = [0]*pairs_nb
-    ind = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            pairs[ind] = [i, j]
-            ind += 1
-            bar.update()
-    bar.close()
+    pairs_nb = int(n * (n - 1) / 2)
+    file_name = "data/{}pairs.pkl".format(pairs_nb)
+    if os.path.isfile(file_name):
+        with open(file_name, 'rb') as f:  # Python 3: open(..., 'rb')
+            pairs, pairs_nb = pickle.load(f)
+    else:
+        print("generating {} pairs from {} elements".format(pairs_nb, n))
+        bar = tqdm(total=pairs_nb)
+        bar.update(pairs_nb)
+        pairs = [0]*pairs_nb
+        ind = 0
+        for i in range(n):
+            for j in range(i+1, n):
+                pairs[ind] = [i, j]
+                ind += 1
+                bar.update()
+        bar.close()
+        with open(file_name, 'wb') as f:  # Python 3: open(..., 'rb')
+            pickle.dump([pairs, pairs_nb], f)
     return pairs, pairs_nb
 
 

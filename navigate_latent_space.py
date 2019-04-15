@@ -109,8 +109,8 @@ class latent_space_navigator(object):
     def init_latent_position(self):
         # print(self.sol.data_loader.dataset.__len__())
         # get one random image from dataset
-        ind = randint(1, self.sol.data_loader.dataset.__len__())
-        tensor_image = self.sol.data_loader.dataset.__getitem__(ind)
+        ind = randint(1, self.sol.VAE_data_loader.dataset.__len__())
+        tensor_image = self.sol.VAE_data_loader.dataset.__getitem__(ind)
 
         # encode this image for initial latent position
         tensor_image = Variable(
@@ -121,14 +121,15 @@ class latent_space_navigator(object):
         self.img_arr = get_image(tensor=tensor_image.cpu())
 
     def encode_image(self, image):
-        latent_position = self.sol.net.encoder(image)[:, :self.sol.z_dim]
+        latent_position = self.sol.VAE_net.encoder(image)[:, :self.sol.z_dim]
         latent_position = latent_position.data.cpu().numpy()[0]
         # latent_position = latent_position.numpy()
         return latent_position
 
     def update_img(self):
         position_tensor = torch.tensor(self.latent_position).cuda()
-        self.img_arr = F.sigmoid(self.sol.net.decoder(position_tensor).data)
+        self.img_arr = F.sigmoid(
+            self.sol.VAE_net.decoder(position_tensor).data)
         self.img_arr = get_image(tensor=self.img_arr.cpu())
         self.scale_img()
         img = ImageTk.PhotoImage(image=self.img_arr)
