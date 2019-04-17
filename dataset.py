@@ -79,7 +79,7 @@ class In_memory_paired_dataset:
     # FOr further optimization, keeping track of already computed ambiguity pairs and training several times with the same
     # ambiguity data could be done
 
-    def __init__(self, image_dataset, pool_size=100, transform=None):
+    def __init__(self, image_dataset, pool_size=50, transform=None):
         self.transform = transform
         self.pairs, self.pairs_nb = make_pairs(pool_size)
         self.image_dataset = image_dataset
@@ -115,9 +115,10 @@ class In_memory_paired_dataset:
         # ambiguity = torch.FloatTensor(
         # self.ambiguities[index])
         ambiguity = self.ambiguities[index]
+        similarity = self.similarities[index]
         # self.ambiguities[index], dtype = torch.float64, requires_grad = True)
 
-        return imgs, ambiguity
+        return imgs, ambiguity, similarity
 
     # def get_ambiguity(self, index):
     #     return self.transform(self.ambiguities[index])
@@ -151,11 +152,12 @@ class In_memory_paired_dataset:
         cam_errors = scale(cam_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
         # ambiguity, to be maximized by Adversarial Net and minimized by VAE
-        # ambiguities = (img_MI + img_errors) / 2 - cam_errors
+        ambiguities = (img_MI + img_errors) / 2 - cam_errors
         # Similarity, to be maximized by auxiliary net and VAE
-        ambiguities = cam_errors + (img_MI - img_errors) / 2
+        similarities = cam_errors + (img_MI - img_errors) / 2
 
         self.ambiguities = ambiguities
+        self.similarities = similarities
 
 
 def get_image_dataloader(args):
@@ -214,7 +216,7 @@ def get_image_dataloader(args):
 def get_pairwise_dataloader(im_dataset, args):
     transform = transforms.ToTensor()
     dset = In_memory_paired_dataset(
-        im_dataset, transform=transform, pool_size=80)
+        im_dataset, transform=transform, pool_size=50)
     return DataLoader(dset,
                       batch_size=args.batch_size,
                       shuffle=True,

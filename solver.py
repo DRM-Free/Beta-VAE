@@ -14,7 +14,7 @@ from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
 
 from utils import cuda, grid2gif, get_image
-from model import BetaVAE_H, BetaVAE_B, Auxiliary_network
+from model import BetaVAE_H, BetaVAE_B, Auxiliary_network, reparametrize
 from dataset import get_image_dataloader, get_pairwise_dataloader
 
 import matplotlib.pyplot as plt
@@ -119,9 +119,10 @@ class Solver(object):
         # Maybe add option for optionnal auxiliary network
         # Create auxiliary network
         self.Auxiliary_net = cuda(Auxiliary_network(self.z_dim), self.use_cuda)
+        self.Adv_net = cuda(Auxiliary_network(self.z_dim), self.use_cuda)
         self.VAE_optim = optim.Adadelta(params=self.VAE_net.parameters())
         self.Aux_optim = optim.Adadelta(params=self.Auxiliary_net.parameters())
-
+        self.Adv_optim = optim.Adadelta(params=self.Adv_net.parameters())
         self.viz_name = args.viz_name
         self.viz_port = args.viz_port
         self.viz_on = args.viz_on
@@ -171,8 +172,8 @@ class Solver(object):
         pbar.close()
 
     def train(self, pbar, num_steps):
-        for x in self.VAE_data_loader:
-            for i in range(num_steps):
+        for i in range(num_steps):
+            for x in self.VAE_data_loader:
                 x = Variable(cuda(x, self.use_cuda))
                 x_recon, mu, logvar = self.VAE_net(x)
                 recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
@@ -199,6 +200,8 @@ class Solver(object):
             pbar.update(1)
 
     def auxiliary_training(self):
+        # TODO make sure initial disambiguation is done only if the network was not previously trained
+        # self.initial_disambiguation()
         pbar = self.init_train()
         nb_phases = int(10)
         max_iter = self.max_iter
@@ -206,47 +209,67 @@ class Solver(object):
         for training_phase in range(nb_phases):
 
             # Deactivate gradients for decoder part for auxiliary training
-            for param in self.VAE_net.decoder.parameters():
-                param.requires_grad = False
+            self.deactivate_grad(self.VAE_net.decoder)
             self.encoder_auxiliary_training()
-
+            self.encoder_adversarial_training()
             # Reactivate gradients for decoder part
-            for param in self.VAE_net.decoder.parameters():
-                param.requires_grad = True
+            self.activate_grad(self.VAE_net.decoder)
 
             self.train(pbar, num_steps)
             if training_phase == nb_phases:
-                save_name = 'last'
+                save_name = "last"
             else:
-                save_name = 'phase{}'.format(training_phase)
+                save_name = "phase_{}".format(training_phase)
                 # TODO check that auxiliary network is well saved and loaded
             self.save_checkpoint(save_name)
             self.viz_traverse()
+            # Pick new images for auxiliary and adversarial training (this is expensive due to all the pairwise ambiguity/similarity computations)
+            self.Aux_data_loader.dataset.sample_images()
         self.end_train(pbar)
+
+    def initial_disambiguation(self):
+        print("initial disambiguation...")
+        for i in range(3):
+            self.encoder_auxiliary_training()
+            self.encoder_adversarial_training()
+            self.Aux_data_loader.dataset.sample_images()
+        print("done")
 
     # Adversarial or Cooperative training of VAE encoder and auxiliary network
     # TODO verify proper shuffling of data
     # TODO verify autograd : is the gradient properly computed ?
     def encoder_auxiliary_training(self):
         # Pairwise ambiguities are expensive to compute, so we use it several times each epoch
-        # TODO change range here to reuse supervised data each epoch
+        # TODO add range here to reuse supervised data
         for _, data in enumerate(self.Aux_data_loader, 0):
-            imgs, ambiguity = data
+            imgs, ambiguity, similarity = data
             # for ambiguity, imgs in self.Aux_data_loader:
             # TODO check images are passed properly by dataloader
             img0 = imgs[0].cuda()
             img1 = imgs[1].cuda()
+            # why is the code of size 6 instead of 3 ? Why is the reparametrize function ?
             code1 = self.VAE_net._encode(img0)
+            mu = code1[:, :self.z_dim]
+            logvar = code1[:, self.z_dim:]
+            code1 = reparametrize(mu, logvar)
             code2 = self.VAE_net._encode(img1)
-            # TODO check codes are concatenated in the proper dimension
-            AUX_net_input = torch.cat((code1, code2), 0)
+            mu = code2[:, :self.z_dim]
+            logvar = code2[:, self.z_dim:]
+            code2 = reparametrize(mu, logvar)
+
+            # First dimension (0) is batch size so we cat in dim 1
+            AUX_net_input = torch.cat((code1, code2), 1)
             Aux_output = self.Auxiliary_net.forward(AUX_net_input)
-            ambiguity = cuda(ambiguity.float(), self.use_cuda)
+
+            similarity = cuda(similarity.float(), self.use_cuda)
+            similarity.requires_grad = True
             Aux_loss = F.mse_loss(
-                Aux_output, ambiguity, size_average=False).div(self.batch_size)
+                Aux_output, similarity, size_average=False).div(self.batch_size)
+            # Aux_loss = F.cross_entropy(Aux_output, similarity)
             self.Aux_optim.zero_grad()
             self.VAE_optim.zero_grad()
             # TODO make sure this loss is good for the selected task (adversarial, auxiliary) and is applied to both trainings
+            # Auxiliary loss is shared between encoder and auxiliary net
             Aux_loss.backward()
             # TODO check that these steps update the required weights
             self.Aux_optim.step()
@@ -255,8 +278,65 @@ class Solver(object):
             self.Aux_data_loader = get_pairwise_dataloader(
                 self.im_dataset, self.args)
 
-    def train_decoder(self):
-        pass
+    def encoder_adversarial_training(self):
+        for _, data in enumerate(self.Aux_data_loader, 0):
+            imgs, ambiguity, similarity = data
+            # for ambiguity, imgs in self.Aux_data_loader:
+            # TODO check images are passed properly by dataloader
+            img0 = imgs[0].cuda()
+            img1 = imgs[1].cuda()
+            # why is the code of size 6 instead of 3 ? Why is the reparametrize function ?
+            code1 = self.VAE_net._encode(img0)
+            mu = code1[:, :self.z_dim]
+            logvar = code1[:, self.z_dim:]
+            code1 = reparametrize(mu, logvar)
+            code2 = self.VAE_net._encode(img1)
+            mu = code2[:, :self.z_dim]
+            logvar = code2[:, self.z_dim:]
+            code2 = reparametrize(mu, logvar)
+
+            Adv_net_input = torch.cat((code1, code2), 1)
+            Adv_output = self.Adv_net.forward(Adv_net_input)
+            ambiguity = cuda(ambiguity.float(), self.use_cuda)
+            ambiguity.requires_grad = True
+            ADV_loss = F.mse_loss(Adv_output, ambiguity,
+                                  size_average=False).div(self.batch_size)
+
+            # self.Adv_optim.zero_grad()
+            # self.VAE_optim.zero_grad()
+            # ADV_loss.backward()
+            # self.Adv_optim.step()
+            # self.VAE_optim.step()
+            ######################### Keep these lines#########################
+            # ADV network aims at finding ambiguous pairs of images based on their code
+            # VAE encoder will try to prevent this by resorting to unambiguous encoding
+            VAE_loss = -ADV_loss
+            # TODO check that these steps update the required weights
+            # TODO make sure this loss is good for the selected task (adversarial / auxiliary)
+            self.deactivate_grad(self.VAE_net.encoder)
+            self.Adv_optim.zero_grad()
+            ADV_loss.backward(retain_graph=True)
+            self.Adv_optim.step()
+            self.activate_grad(self.VAE_net.encoder)
+
+            self.deactivate_grad(self.Adv_net.net)
+            self.VAE_optim.zero_grad()
+            VAE_loss.backward()
+            self.VAE_optim.step()
+            self.activate_grad(self.Adv_net.net)
+            ######################### Keep these lines#########################
+
+        # Refresh pairwise dataset from image dataset
+            self.Aux_data_loader = get_pairwise_dataloader(
+                self.im_dataset, self.args)
+
+    def deactivate_grad(self, net):
+        for param in net.parameters():
+            param.requires_grad = False
+
+    def activate_grad(self, net):
+        for param in net.parameters():
+            param.requires_grad = True
 
     def viz_reconstruction(self):
         self.net_mode(train=False)
@@ -338,8 +418,12 @@ class Solver(object):
 
         if train:
             self.VAE_net.train()
+            self.Auxiliary_net.train()
+            self.Adv_net.train()
         else:
             self.VAE_net.eval()
+            self.Auxiliary_net.eval()
+            self.Adv_net.eval()
 
     def save_checkpoint(self, filename, silent=True):
         model_states = {'VAE_net': self.VAE_net.state_dict(

@@ -24,10 +24,6 @@
                 "1",
                 "--lr",
                 "1e-3",
-                "--beta1",
-                "0.9",
-                "--beta2",
-                "0.999",
                 "--objective",
                 "B",
                 "--model",
@@ -35,9 +31,9 @@
                 "--batch_size",
                 "500",
                 "--max_iter",
-                "50",
+                "100",
                 "--viz_name",
-                "debug_test_2",
+                "debug_test_7",
                 "--num_workers",
                 "0",
                 "--train",
@@ -49,7 +45,9 @@
                 "--z_dim",
                 "3",
                 "--viz_on",
-                "False"
+                "False",
+                "--C_stop_iter",
+                "100"
             ]
         },
     ]

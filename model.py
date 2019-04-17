@@ -20,7 +20,7 @@ class View(nn.Module):
     def forward(self, tensor):
         return tensor.view(self.size)
 
-# Auxiliary network takes a pair of encoded images as input and tries to determine the pairwise ambiguity between those images
+# Auxiliary network takes a pair of encoded images as input and tries to determine the pairwise ambiguity or similarity between those images
 
 
 class Auxiliary_network(nn.Module):
