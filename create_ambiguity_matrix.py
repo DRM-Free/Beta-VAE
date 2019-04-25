@@ -16,6 +16,7 @@ import pickle
 
 def make_pairs(n):
     pairs_nb = int(n * (n - 1) / 2)
+    # Load pairs in case they were already computed
     file_name = "data/{}pairs.pkl".format(pairs_nb)
     if os.path.isfile(file_name):
         with open(file_name, 'rb') as f:  # Python 3: open(..., 'rb')
@@ -104,11 +105,10 @@ def get_ambiguities(folder, pairs, pairs_nb, ambiguities_only=True):
         # img_2 = list(img_2.getdata())
 
         # Test various image error metrics
-        # img_errors[i] = mean_squared_error(img_1, img_2)
-        img_errors[i] = (np.square(img_1-img_2)).mean()
+        # img_errors[i] = (np.square(img_1-img_2)).mean()
         # img_errors[i] = wasserstein_distance(img_1, img_2)
-        img_MI[i] = mutual_info_score(
-            np.reshape(img_1, -1), np.reshape(img_2, -1))
+        # img_MI[i] = mutual_info_score(
+        #     np.reshape(img_1, -1), np.reshape(img_2, -1))
 
         # Test ends
         camera_error = mean_squared_error(
@@ -132,10 +132,12 @@ def get_ambiguities(folder, pairs, pairs_nb, ambiguities_only=True):
                    with_std=True, copy=True)
     # compute ambiguity metrics (if the img_errors contains mutual information instead of errors, compute sum instead of difference)
     # Ambiguities for adversarial network
-    ambiguities = cam_errors + (img_MI - img_errors) / 2
+    # ambiguities = cam_errors + (img_MI - img_errors) / 2
 
     # Similarities for auxiliary network
     # ambiguities = (img_MI + img_errors) / 2 - cam_errors
+    # ambiguities = img_errors-img_MI / 2 -
+    ambiguities = -cam_errors
 
     if ambiguities_only:
         return ambiguities
@@ -145,7 +147,7 @@ def get_ambiguities(folder, pairs, pairs_nb, ambiguities_only=True):
 
 if __name__ == "__main__":
     dataset_name = "cube_64_R_4_random_angles"
-    camera_pos_file = "camera_data_cube_64_R_4_random_angles.csv"
+    camera_pos_file = "data/camera_data_cube_64_R_4_random_angles.csv"
     folder = os.path.join("data", dataset_name, "images")
     radius = 4
     # list image files
@@ -153,7 +155,7 @@ if __name__ == "__main__":
     # Generate pairs for proper number of files
     img_nb = img_files.__len__()
     # for 5000 images, compute all pairwise errors takes 18 hours (better compute pairwise errors at training time for batches of size ~100)
-    pairs, pairs_nb = make_pairs(100)  # switch back to img_nb
+    pairs, pairs_nb = make_pairs(100)  # number of images to consider
     # generate ambiguity table as empty dictionary of size pairs_nb
     s = set(range(pairs_nb))
     ambiguity_table = dict.fromkeys(s)

@@ -27,14 +27,80 @@ class Auxiliary_network(nn.Module):
     def __init__(self, z_dim):
         super(Auxiliary_network, self).__init__()
         self.z_dim = z_dim
+        size = 10  # previously 20
+
+        # This is a classifier (ambiguous/not ambiguous) so the activation functions must be steep
+        # self.net = nn.Sequential(
+        #     nn.Linear(2*z_dim, size),
+        #     torch.nn.Prelu(),
+        #     nn.Dropout(0.1),
+        #     nn.Linear(size, size),
+        #     torch.nn.Prelu(),
+        #     nn.Dropout(0.1),
+        #     nn.Linear(size, size),
+        #     torch.nn.Prelu(),
+        #     nn.Linear(size, 1),
+        # )
+
+        # self.net = nn.Sequential(
+        #     nn.Linear(2*z_dim, 10),
+        #     torch.nn.LeakyReLU(),
+        #     nn.Linear(10, 10),
+        #     torch.nn.LeakyReLU(),
+        #     nn.Linear(10, 1),
+        #     nn.Hardtanh()
+        #     # nn.LogSigmoid()
+        # )
+
         self.net = nn.Sequential(
-            nn.Linear(2*z_dim, 10),
-            torch.nn.LeakyReLU(),
-            nn.Linear(10, 10),
-            torch.nn.LeakyReLU(),
-            nn.Linear(10, 1),
-            nn.Hardtanh()
-            # nn.LogSigmoid()
+            nn.Linear(2*z_dim, size),
+            torch.nn.Sigmoid(),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            torch.nn.PReLU(),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            torch.nn.PReLU(),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            torch.nn.PReLU(),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            torch.nn.PReLU(),
+            nn.Linear(size, 1),
+            nn.Sigmoid()
+            # torch.nn.PReLU()
+        )
+
+        self.weight_init()
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Position_auxiliary_encoder(nn.Module):
+    def __init__(self, pos_dim, code_dim):
+        super(Position_auxiliary_encoder, self).__init__()
+        self.pos_dim = pos_dim
+        self.code_dim = code_dim
+        size = 20
+        # This is not a classifier but a function estimator, so the activation functions should not be too steep
+        self.net = nn.Sequential(
+            nn.Linear(self.pos_dim, size),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            nn.Linear(size, size),
+            nn.Dropout(0.2),
+            nn.Linear(size, self.code_dim),
         )
         self.weight_init()
 
@@ -120,35 +186,37 @@ class BetaVAE_B(BetaVAE_H):
 
         self.encoder = nn.Sequential(
             nn.Conv2d(nc, 32, 4, 2, 1),          # B,  32, 32, 32
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.Conv2d(32, 32, 4, 2, 1),          # B,  32, 16, 16
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.Conv2d(32, 32, 4, 2, 1),          # B,  32,  8,  8
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.Conv2d(32, 32, 4, 2, 1),          # B,  32,  4,  4
-            nn.ReLU(True),
+            nn.PReLU(),
             View((-1, 32*4*4)),                  # B, 512
             nn.Linear(32*4*4, 256),              # B, 256
-            nn.ReLU(True),
+            nn.Dropout(0.2),
+            nn.PReLU(),
             nn.Linear(256, 256),                 # B, 256
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.Linear(256, z_dim*2),             # B, z_dim*2
         )
 
         self.decoder = nn.Sequential(
             nn.Linear(z_dim, 256),               # B, 256
-            nn.ReLU(True),
-            nn.Linear(256, 256),                 # B, 256
-            nn.ReLU(True),
+            nn.PReLU(),
+            nn.Linear(256, 256),  # B, 256
+            nn.Dropout(0.2),
+            nn.PReLU(),
             nn.Linear(256, 32*4*4),              # B, 512
-            nn.ReLU(True),
+            nn.PReLU(),
             View((-1, 32, 4, 4)),                # B,  32,  4,  4
             nn.ConvTranspose2d(32, 32, 4, 2, 1),  # B,  32,  8,  8
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.ConvTranspose2d(32, 32, 4, 2, 1),  # B,  32, 16, 16
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.ConvTranspose2d(32, 32, 4, 2, 1),  # B,  32, 32, 32
-            nn.ReLU(True),
+            nn.PReLU(),
             nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B,  nc, 64, 64
         )
         self.weight_init()

@@ -35,17 +35,24 @@ def main(args):
 
     net = Solver(args)
 
-    if args.train:
-        # net.train()
-        # Warning ! Auxiliary training should be made in one execution only, as auxiliary network is not saved to drive yet
-        net.auxiliary_training()
-    else:
-        net.viz_traverse()
-    if args.navigate_latent_space:
-        # net.navigate_latent_space()
-        net.net_mode(train=False)
-        navigator = latent_space_navigator(net)
-        navigator.navigate()
+    net.net_mode(train=False)
+    # check that the model is correctly loaded
+    navigator = latent_space_navigator(net)
+    navigator.navigate()
+    # Training auxiliary position encoder
+    net.position_auxiliary_encoder_train()
+
+    # if args.train:
+    #     # net.train()
+    #     net.auxiliary_training()
+    #     # net.supervised_training()
+    # else:
+    #     net.viz_traverse(prefix="")
+    # if args.navigate_latent_space:
+    #     # net.navigate_latent_space()
+    #     net.net_mode(train=False)
+    #     navigator = latent_space_navigator(net)
+    #     navigator.navigate()
 
 
 if __name__ == "__main__":
@@ -115,6 +122,10 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt_name', default='last', type=str,
                         help='load previous checkpoint. insert checkpoint filename')
 
+    parser.add_argument('--prefix', default='initial_training', type=str,
+                        help='prefix directory for saving intermediate models when training iteratively')
+    parser.add_argument('--base', default='initial_training', type=str,
+                        help='prefix directory for previously trained model on which to base training')
     args = parser.parse_args()
 
     main(args)

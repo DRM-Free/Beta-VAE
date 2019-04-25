@@ -110,7 +110,7 @@ class latent_space_navigator(object):
         # print(self.sol.data_loader.dataset.__len__())
         # get one random image from dataset
         ind = randint(1, self.sol.VAE_data_loader.dataset.__len__())
-        tensor_image = self.sol.VAE_data_loader.dataset.__getitem__(ind)
+        tensor_image, pos = self.sol.VAE_data_loader.dataset.__getitem__(ind)
 
         # encode this image for initial latent position
         tensor_image = Variable(
@@ -123,7 +123,6 @@ class latent_space_navigator(object):
     def encode_image(self, image):
         latent_position = self.sol.VAE_net.encoder(image)[:, :self.sol.z_dim]
         latent_position = latent_position.data.cpu().numpy()[0]
-        # latent_position = latent_position.numpy()
         return latent_position
 
     def update_img(self):

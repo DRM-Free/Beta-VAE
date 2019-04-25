@@ -33,21 +33,29 @@
                 "--max_iter",
                 "100",
                 "--viz_name",
-                "debug_test_7",
+                "debug_test_15",
                 "--num_workers",
                 "0",
                 "--train",
                 "True",
                 "--gamma",
-                "5",
+                "0",
                 // "--beta",
                 // "20",
                 "--z_dim",
-                "3",
+                "2",
                 "--viz_on",
                 "False",
                 "--C_stop_iter",
-                "100"
+                "100",
+                "--prefix",
+                "Additional_training",
+                // "Initial_training", //This should contain no space
+                // "Additional_training_auxiliary_ambiguity",
+                // "Additional_training_small_gamma",
+                "--base",
+                // "Initial_training"
+                "Additional_training"
             ]
         },
     ]

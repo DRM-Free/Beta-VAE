@@ -62,8 +62,9 @@ class In_memory_dataset:
         img = self.imgs[index]
         if self.transform is not None:
             img = self.transform(img)
-            # img.requires_grad = True
-        return img
+            cam_pos = self.cam_pos[index]
+            dict_pos = {"x": cam_pos[0], "y": cam_pos[1], "z": cam_pos[2]}
+        return img, dict_pos
 
     def get_pos(self, index):
         return self.cam_pos[index]
@@ -78,15 +79,21 @@ class In_memory_paired_dataset:
     # Actually pairwise ambiguity is computed only for a number of pairs equal to batch size (one pair per batch).
     # FOr further optimization, keeping track of already computed ambiguity pairs and training several times with the same
     # ambiguity data could be done
-
-    def __init__(self, image_dataset, pool_size=50, transform=None):
+    # type : "albiguity" or "similarity"
+    def __init__(self, image_dataset, type, pool_size=50, transform=None):
         self.transform = transform
+        self.type = type
         self.pairs, self.pairs_nb = make_pairs(pool_size)
+        self.used_pairs = self.pairs
+        self.used_pairs_nb = self.pairs_nb
         self.image_dataset = image_dataset
         self.pool_size = pool_size
+        self.already_passed = False
         self.sample_images()
 
     def sample_images(self):
+        self.used_pairs = self.pairs
+        self.used_pairs_nb = self.pairs_nb
         self.pick_images()
         self.compute_pairwise_ambiguities()
 
@@ -106,29 +113,41 @@ class In_memory_paired_dataset:
         # im1 = self. imgs[self.pairs[index][0]] #those images are untransformed, thus not in tensor form
         # im2 = self.imgs[self.pairs[index][1]]
         # TODO fix getitem to make images pair and supervised information available at the same time
-        im1 = self.image_dataset.__getitem__(
-            self.img_indexes[self.pairs[index][0]])
-        im2 = self.image_dataset.__getitem__(
-            self.img_indexes[self.pairs[index][1]])
+        im1, pos = self.image_dataset.__getitem__(
+            self.img_indexes[self.used_pairs[index][0]])
+        im2, pos = self.image_dataset.__getitem__(
+            self.img_indexes[self.used_pairs[index][1]])
         # TODO check concatentation axis, check items are returned as tensors when required
-        imgs = (im1, im2)
         # ambiguity = torch.FloatTensor(
         # self.ambiguities[index])
-        ambiguity = self.ambiguities[index]
-        similarity = self.similarities[index]
-        # self.ambiguities[index], dtype = torch.float64, requires_grad = True)
+        if self.type == "ambiguity":
+            ambiguity = self.ambiguities[index]
+            data = {"im1": im1, "im2": im2, "ambiguity": ambiguity}
+        if self.type == "similarity":
+            similarity = self.similarities[index]
+            data = {"im1": im1, "im2": im2, "similarity": similarity}
 
-        return imgs, ambiguity, similarity
+        # self.ambiguities[index], dtype = torch.float64, requires_grad = True)
+        return data
 
     # def get_ambiguity(self, index):
     #     return self.transform(self.ambiguities[index])
 
     def __len__(self):
-        return self.pairs_nb
+        return self.used_pairs_nb
+        # TODO keep only ambiguities superior to a threshold (0 is fair) and the same number of non ambiguous pairs
+        # Approx 7% of pairs are ambiguous wrt mean squares : too much negative examples is not good
 
     def compute_pairwise_ambiguities(self):
+        # Debug code
+        if self.already_passed == False:
+            self.already_passed = True
+        else:
+            a = 1
+# Debug code
+
         pairs_nb = self.pairs_nb
-        img_MI = [0] * pairs_nb
+        # img_MI = [0] * pairs_nb
         img_errors = [0] * pairs_nb
         cam_errors = [0] * pairs_nb
         for index in range(self.pairs_nb):
@@ -143,21 +162,45 @@ class In_memory_paired_dataset:
             img2 = np.array(img2)
             img2 = np.reshape(img2, -1)
             img_errors[index] = mean_squared_error(img1, img2)
-            img_MI[index] = mutual_info_score(img1, img2)
+            # img_MI[index] = mutual_info_score(img1, img2)
             cam_errors[index] = mean_squared_error(cam_pos1, cam_pos2)
         img_errors = scale(img_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
-        img_MI = scale(img_MI, axis=0, with_mean=True,
-                       with_std=True, copy=True)
+        # img_MI = scale(img_MI, axis=0, with_mean=True,
+        #                with_std=True, copy=True)
         cam_errors = scale(cam_errors, axis=0, with_mean=True,
                            with_std=True, copy=True)
-        # ambiguity, to be maximized by Adversarial Net and minimized by VAE
-        ambiguities = (img_MI + img_errors) / 2 - cam_errors
-        # Similarity, to be maximized by auxiliary net and VAE
-        similarities = cam_errors + (img_MI - img_errors) / 2
 
-        self.ambiguities = ambiguities
-        self.similarities = similarities
+        # ambiguity, to be maximized by Adversarial Net and minimized by VAE
+        # ambiguities = (img_MI + img_errors) / 2 - cam_errors
+        # Similarity, to be maximized by auxiliary net and VAE
+        # similarities = cam_errors + (img_MI - img_errors) / 2
+
+        if self.type == "ambiguity":
+            # Find the 5% most ambiguous and 5% least ambiguous and give them an ambiguity class {0,1}
+            ambiguities = img_errors - cam_errors
+            keep = int(np.ceil(np.size(ambiguities) * 0.05))
+            amb_indexes = np.argsort(ambiguities)
+            ambiguous_pairs = amb_indexes[:keep]
+            not_ambiguous_pairs = amb_indexes[-keep:]
+            self.used_pairs = np.concatenate((
+                [self.pairs[i] for i in ambiguous_pairs], [self.pairs[i] for i in not_ambiguous_pairs]), axis=0)
+            self.used_pairs_nb = self.used_pairs.__len__()
+            self.ambiguities = np.concatenate(([0]*keep, [1]*keep))
+
+        if self.type == "similarity":
+            # Find the 10% most similar and 10% least similar and give them a similarity class {0,1}
+            similarities = -1 * cam_errors
+            keep = int(np.ceil(np.size(similarities) * 0.1))
+            sim_indexes = np.argsort(similarities)
+            similar_pairs = sim_indexes[:keep]
+            not_similar_pairs = sim_indexes[-keep:]
+            self.used_pairs = np.concatenate((
+                [self.pairs[i] for i in similar_pairs], [self.pairs[i] for i in not_similar_pairs]), axis=0)
+            self.used_pairs_nb = self.used_pairs.__len__()
+            self.similarities = np.concatenate(([0] * keep, [1] * keep))
+
+            # keep size 123, used_pairs size 492
 
 
 def get_image_dataloader(args):
@@ -213,10 +256,10 @@ def get_image_dataloader(args):
 # TODO verify that shuffling of both dataloaders does not mismatch supervised training data
 
 
-def get_pairwise_dataloader(im_dataset, args):
+def get_pairwise_dataloader(im_dataset, args, type):
     transform = transforms.ToTensor()
     dset = In_memory_paired_dataset(
-        im_dataset, transform=transform, pool_size=50)
+        im_dataset, type, transform=transform, pool_size=50)
     return DataLoader(dset,
                       batch_size=args.batch_size,
                       shuffle=True,
