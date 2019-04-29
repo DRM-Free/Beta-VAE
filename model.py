@@ -27,7 +27,7 @@ class Auxiliary_network(nn.Module):
     def __init__(self, z_dim):
         super(Auxiliary_network, self).__init__()
         self.z_dim = z_dim
-        size = 10  # previously 20
+        size = 5  # previously 20
 
         # This is a classifier (ambiguous/not ambiguous) so the activation functions must be steep
         # self.net = nn.Sequential(
@@ -64,9 +64,6 @@ class Auxiliary_network(nn.Module):
             nn.Linear(size, size),
             nn.Dropout(0.2),
             torch.nn.PReLU(),
-            nn.Linear(size, size),
-            nn.Dropout(0.2),
-            torch.nn.PReLU(),
             nn.Linear(size, 1),
             nn.Sigmoid()
             # torch.nn.PReLU()
@@ -92,6 +89,7 @@ class Position_auxiliary_encoder(nn.Module):
         # This is not a classifier but a function estimator, so the activation functions should not be too steep
         self.net = nn.Sequential(
             nn.Linear(self.pos_dim, size),
+            nn.Dropout(0.2),
             nn.Linear(size, size),
             nn.Dropout(0.2),
             nn.Linear(size, size),

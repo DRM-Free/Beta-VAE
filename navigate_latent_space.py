@@ -11,6 +11,8 @@ from PIL import Image, ImageTk
 from random import randint, uniform
 import numpy as np
 
+# TODO add support for real alongside latent position. Recommended usage of a position manager
+
 
 class latent_space_navigator(object):
     def __init__(self, sol):

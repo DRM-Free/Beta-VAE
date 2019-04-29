@@ -124,7 +124,17 @@ class Solver(object):
         # Create auxiliary network
         self.Auxiliary_net = cuda(Auxiliary_network(self.z_dim), self.use_cuda)
         self.Adv_net = cuda(Auxiliary_network(self.z_dim), self.use_cuda)
+        # TODO set position size automatically
+        pos_size = 2
+        self.position_encoder = Position_auxiliary_encoder(pos_size, self.z_dim)
+        self.position_encoder = cuda(self.position_encoder, True)
+        self.position_optim = optim.Adadelta(params=self.position_encoder.parameters())
+
         self.VAE_optim = optim.Adadelta(params=self.VAE_net.parameters())
+        self.VAE_aux_optim = optim.Adadelta(params=self.VAE_net.encoder.parameters())
+        self.VAE_adv_optim = optim.Adadelta(
+            params=self.VAE_net.encoder.parameters())
+
         self.Aux_optim = optim.Adadelta(params=self.Auxiliary_net.parameters())
         self.Adv_optim = optim.Adadelta(params=self.Adv_net.parameters())
         self.viz_name = args.viz_name
@@ -196,12 +206,12 @@ class Solver(object):
             if update_iter:
                 self.global_iter += 1
 
-    def train_decoder_alone(self, pbar, num_steps):
+    def train_decoder_alone(self, num_steps):
         self.deactivate_grad(self.VAE_net.encoder)
         self.train(num_steps, False)
         self.activate_grad(self.VAE_net.encoder)
 
-    def train_encoder_alone(self, pbar, num_steps):
+    def train_encoder_alone(self, num_steps):
         self.deactivate_grad(self.VAE_net.decoder)
         self.train(num_steps, False)
         self.activate_grad(self.VAE_net.decoder)
@@ -209,7 +219,7 @@ class Solver(object):
     def auxiliary_training(self):
         # TODO make sure initial disambiguation is done only if the network was not previously trained
         # self.initial_disambiguation()
-        nb_phases = int(10)
+        nb_phases = int(30)
         pbar = self.init_train(nb_phases)
         max_iter = self.max_iter
         num_steps = int(np.ceil(max_iter/nb_phases))
@@ -221,7 +231,7 @@ class Solver(object):
             self.encoder_adversarial_training()
             # Reactivate gradients for decoder part
             self.activate_grad(self.VAE_net.decoder)
-            self.train_decoder_alone(pbar, num_steps)
+            self.train_decoder_alone(num_steps)
 
             self.train(num_steps, update_iter=True)
             if training_phase == nb_phases-1:
@@ -242,7 +252,6 @@ class Solver(object):
         self.deactivate_grad(self.VAE_net.encoder)
         nb_phases = int(10)
         pbar = self.init_train(nb_phases=nb_phases)
-        pbar = self.init_train(nb_phases)
         for training_phase in range(nb_phases):
             for img, pos in self.VAE_data_loader:
                 img = Variable(cuda(img, self.use_cuda))
@@ -276,12 +285,8 @@ class Solver(object):
 
 
     def position_auxiliary_encoder_train(self):
-        # TODO set position size automatically
-        pos_size = 2
-        position_encoder = Position_auxiliary_encoder(pos_size, self.z_dim)
-        position_encoder = cuda(position_encoder, True)
-        position_encoder.train()
-        position_optim = optim.Adadelta(params=position_encoder.parameters())
+
+        self.position_encoder.train()
         self.net_mode(train=False)
         nb_epoch = 50
         pbar = tqdm(total=nb_epoch)
@@ -311,24 +316,25 @@ class Solver(object):
                 # code = cuda(torch.tensor(code), uses_cuda=True)
                 # This would not work if code was sent to GPU, as encoder was not sent to gpu
                 # Use angle positions for training !
-                guess_code = position_encoder.forward(angle_pos)
+                guess_code = self.position_encoder.forward(angle_pos)
                 # guess_code = position_encoder.forward(pos)
                 position_loss = F.mse_loss(
                     guess_code, code).div(self.batch_size)
-                position_optim.zero_grad()
+                self.position_optim.zero_grad()
                 position_loss.backward()
-                position_optim.step()
+                self.position_optim.step()
                 loss_str = str(position_loss.cpu().detach().numpy())
                 pbar.set_description("loss: " + loss_str)
 
             pbar.update(1)
         pbar.close()
+        # self.save_checkpoint(filename="last")
 
-        # save auxiliary position network
-        filename = os.path.join(self.ckpt_dir, "position_auxiliary_encoder")
-        pos_states = {'position_net': position_encoder.state_dict()}
-        with open(filename, mode='wb+') as f:
-            torch.save(pos_states, f)
+        # # save auxiliary position network
+        # filename = os.path.join(self.ckpt_dir, "position_auxiliary_encoder")
+        # pos_states = {'position_net': position_encoder.state_dict()}
+        # with open(filename, mode='wb+') as f:
+        #     torch.save(pos_states, f)
 
     def encode_pairwise_imgs(self, data):
             im1 = data["im1"]
@@ -372,6 +378,16 @@ class Solver(object):
         VAE_loss.backward()
         self.VAE_optim.step()
 
+    def VAE_aux_step(self, VAE_loss):
+        self.VAE_optim.zero_grad()
+        VAE_loss.backward()
+        self.VAE_aux_optim.step()
+    
+    def VAE_adv_step(self, VAE_loss):
+        self.VAE_optim.zero_grad()
+        VAE_loss.backward()
+        self.VAE_adv_optim.step()
+
     def aux_step(self, Aux_loss):
         self.Aux_optim.zero_grad()
         Aux_loss.backward()
@@ -406,7 +422,7 @@ class Solver(object):
             code1, code2 = self.encode_pairwise_imgs(data)
             Aux_loss = self.aux_loss(
                 code1, code2, similarity)/self.similarity_data_loader.batch_size
-            self.VAE_step(Aux_loss)
+            self.VAE_aux_step(Aux_loss)
 
         # Refresh pairwise dataset from image dataset
         self.similarity_data_loader.dataset.sample_images()
@@ -428,7 +444,7 @@ class Solver(object):
             Adv_loss = self.adv_loss(
                 code1, code2, ambiguity)/self.ambiguity_data_loader.batch_size
             # self.VAE_step(Adv_loss * -1)
-            self.VAE_step(Adv_loss) #for auxiliary training instead of adversarial training
+            self.VAE_adv_step(Adv_loss) #for auxiliary training instead of adversarial training
 
 
         # Refresh pairwise dataset from image dataset
@@ -531,9 +547,9 @@ class Solver(object):
 
     def save_checkpoint(self, filename, silent=True):
         model_states = {'VAE_net': self.VAE_net.state_dict(
-        ), 'AUX_net': self.Auxiliary_net.state_dict()}
-        optim_states = {'VAE_optim': self.VAE_optim.state_dict(
-        ), 'Aux_optim': self.Aux_optim.state_dict(), }
+        ), 'AUX_net': self.Auxiliary_net.state_dict(), 'adv_net':self.Adv_net.state_dict(),'pos_net':self.position_encoder.state_dict()}
+        optim_states = {'VAE_optim': self.VAE_optim.state_dict(),  'Aux_optim': self.Aux_optim.state_dict(
+        ), 'Adv_optim': self.Adv_optim.state_dict(), 'vae_adv_optim': self.VAE_adv_optim.state_dict(), 'vae_aux_optim': self.VAE_aux_optim.state_dict(), 'pos_optim':self.position_optim.state_dict()}
         win_states = {'recon': self.win_recon,
                       'kld': self.win_kld,
                       'mu': self.win_mu,
@@ -562,24 +578,27 @@ class Solver(object):
             self.win_var = checkpoint['win_states']['var']
             self.win_mu = checkpoint['win_states']['mu']
             self.VAE_net.load_state_dict(checkpoint['model_states']['VAE_net'])
-            self.VAE_optim.load_state_dict(
-                checkpoint['optim_states']['VAE_optim'])
             self.Auxiliary_net.load_state_dict(
                 checkpoint['model_states']['AUX_net'])
+            self.Adv_net.load_state_dict(
+                checkpoint['model_states']['adv_net'])
+            self.VAE_optim.load_state_dict(
+                checkpoint['optim_states']['VAE_optim'])
             self.Aux_optim.load_state_dict(
                 checkpoint['optim_states']['Aux_optim'])
+            self.Adv_optim.load_state_dict(
+                checkpoint['optim_states']['Adv_optim'])
+            # self.VAE_adv_optim.load_state_dict(
+            #     checkpoint['optim_states']['vae_adv_optim'])
+            # self.VAE_aux_optim.load_state_dict(
+            #     checkpoint['optim_states']['vae_aux_optim'])
+            self.VAE_adv_optim=checkpoint['optim_states']['vae_adv_optim']
+            self.VAE_aux_optim=checkpoint['optim_states']['vae_aux_optim']
+
             print("=> loaded checkpoint '{} (iter {})'".format(
                 file_path, self.global_iter))
         else:
             print("=> no checkpoint found at '{}'".format(file_path))
-
-            # load auxiliary position network
-        filepath = os.path.join(self.ckpt_dir, "position_auxiliary_encoder")
-        if os.path.isfile(file_path):
-            checkpoint = torch.load(file_path)
-            pos_size = 2
-            self.position_encoder = Position_auxiliary_encoder(pos_size, self.z_dim)
-            self.position_encoder = cuda(self.position_encoder, True)
-            self.position_encoder.load_state_dict(checkpoint["position_net"])
-            self.Aux_optim.load_state_dict(
-                checkpoint['optim_states']['Aux_optim'])
+            self.position_encoder.load_state_dict(checkpoint['model_states']["position_net"])
+            self.pos_optim.load_state_dict(
+                checkpoint['optim_states']['pos_optim'])

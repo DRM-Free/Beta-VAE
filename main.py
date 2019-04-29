@@ -41,13 +41,15 @@ def main(args):
     navigator.navigate()
     # Training auxiliary position encoder
     net.position_auxiliary_encoder_train()
+    save_name = "last"
+    net.save_checkpoint(filename=save_name)
 
     # if args.train:
     #     # net.train()
     #     net.auxiliary_training()
     #     # net.supervised_training()
     # else:
-    #     net.viz_traverse(prefix="")
+    #     net.viz_traverse()
     # if args.navigate_latent_space:
     #     # net.navigate_latent_space()
     #     net.net_mode(train=False)

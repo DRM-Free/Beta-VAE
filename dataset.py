@@ -200,8 +200,6 @@ class In_memory_paired_dataset:
             self.used_pairs_nb = self.used_pairs.__len__()
             self.similarities = np.concatenate(([0] * keep, [1] * keep))
 
-            # keep size 123, used_pairs size 492
-
 
 def get_image_dataloader(args):
     name = args.dataset
