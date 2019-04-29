@@ -128,7 +128,7 @@ class Solver(object):
         pos_size = 2
         self.position_encoder = Position_auxiliary_encoder(pos_size, self.z_dim)
         self.position_encoder = cuda(self.position_encoder, True)
-        self.position_optim = optim.Adadelta(params=self.position_encoder.parameters())
+        self.position_optim = optim.Adadelta(params=self.position_encoder.parameters(),lr=0.1)
 
         self.VAE_optim = optim.Adadelta(params=self.VAE_net.parameters())
         self.VAE_aux_optim = optim.Adadelta(params=self.VAE_net.encoder.parameters())
@@ -288,7 +288,7 @@ class Solver(object):
 
         self.position_encoder.train()
         self.net_mode(train=False)
-        nb_epoch = 50
+        nb_epoch = 100
         pbar = tqdm(total=nb_epoch)
         for i in range(nb_epoch):
             for img, pos in self.VAE_data_loader:
@@ -307,6 +307,7 @@ class Solver(object):
                     phi = atan2(y, x)
                     angle_pos[batch_elt] = [theta, phi]
                 angle_pos = cuda(torch.tensor(angle_pos).float(), True)
+                angle_pos.requires_grad=True
                 with torch.no_grad():
                     img = cuda(torch.tensor(img), uses_cuda=True)
                     code = self.VAE_net._encode(img)  # shape batch size * 6
@@ -549,7 +550,7 @@ class Solver(object):
         model_states = {'VAE_net': self.VAE_net.state_dict(
         ), 'AUX_net': self.Auxiliary_net.state_dict(), 'adv_net':self.Adv_net.state_dict(),'pos_net':self.position_encoder.state_dict()}
         optim_states = {'VAE_optim': self.VAE_optim.state_dict(),  'Aux_optim': self.Aux_optim.state_dict(
-        ), 'Adv_optim': self.Adv_optim.state_dict(), 'vae_adv_optim': self.VAE_adv_optim.state_dict(), 'vae_aux_optim': self.VAE_aux_optim.state_dict(), 'pos_optim':self.position_optim.state_dict()}
+        ), 'Adv_optim': self.Adv_optim.state_dict(), 'vae_adv_optim': self.VAE_adv_optim.state_dict(), 'vae_aux_optim': self.VAE_aux_optim.state_dict(), 'pos_optim': self.position_optim.state_dict()}
         win_states = {'recon': self.win_recon,
                       'kld': self.win_kld,
                       'mu': self.win_mu,
@@ -588,12 +589,10 @@ class Solver(object):
                 checkpoint['optim_states']['Aux_optim'])
             self.Adv_optim.load_state_dict(
                 checkpoint['optim_states']['Adv_optim'])
-            # self.VAE_adv_optim.load_state_dict(
-            #     checkpoint['optim_states']['vae_adv_optim'])
-            # self.VAE_aux_optim.load_state_dict(
-            #     checkpoint['optim_states']['vae_aux_optim'])
-            self.VAE_adv_optim=checkpoint['optim_states']['vae_adv_optim']
-            self.VAE_aux_optim=checkpoint['optim_states']['vae_aux_optim']
+            self.VAE_adv_optim.load_state_dict(
+                checkpoint['optim_states']['vae_adv_optim'])
+            self.VAE_aux_optim.load_state_dict(
+                checkpoint['optim_states']['vae_aux_optim'])
 
             print("=> loaded checkpoint '{} (iter {})'".format(
                 file_path, self.global_iter))

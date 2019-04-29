@@ -26,6 +26,10 @@ from navigate_latent_space import latent_space_navigator
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 
+from model import Position_auxiliary_encoder
+from utils import cuda
+import torch.optim as optim
+
 
 def main(args):
     seed = args.seed
@@ -36,25 +40,31 @@ def main(args):
     net = Solver(args)
 
     net.net_mode(train=False)
+
+    # Reinit position encoder and optimizer
+    # net.position_encoder = Position_auxiliary_encoder(
+    #     2, net.z_dim)
+    # net.position_encoder = cuda(net.position_encoder, True)
+    # net.position_optim = optim.Adadelta(
+    #     params=net.position_encoder.parameters())
+
     # check that the model is correctly loaded
-    navigator = latent_space_navigator(net)
+    navigator = latent_space_navigator(net, "explore_angle")
     navigator.navigate()
     # Training auxiliary position encoder
-    net.position_auxiliary_encoder_train()
-    save_name = "last"
-    net.save_checkpoint(filename=save_name)
+    # net.position_auxiliary_encoder_train()
 
-    # if args.train:
-    #     # net.train()
-    #     net.auxiliary_training()
-    #     # net.supervised_training()
-    # else:
-    #     net.viz_traverse()
-    # if args.navigate_latent_space:
-    #     # net.navigate_latent_space()
-    #     net.net_mode(train=False)
-    #     navigator = latent_space_navigator(net)
-    #     navigator.navigate()
+    if args.train:
+        # net.train()
+        net.auxiliary_training()
+        # net.supervised_training()
+    else:
+        net.viz_traverse()
+    if args.navigate_latent_space:
+        # net.navigate_latent_space()
+        net.net_mode(train=False)
+        navigator = latent_space_navigator(net, mode="explore_latent")
+        navigator.navigate()
 
 
 if __name__ == "__main__":

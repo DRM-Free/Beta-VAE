@@ -15,12 +15,19 @@ import numpy as np
 
 
 class latent_space_navigator(object):
-    def __init__(self, sol):
+    def __init__(self, sol, mode):
+        self.mode = mode
         self.current_navigated_dim = 0
         self.navigation_step = 0.5
         self.displayed_image_size = [200, 200]
         self.fen1 = Tk()
         self.sol = sol
+        self.sol.position_encoder.train(False)
+        self.sol.deactivate_grad(self.sol.position_encoder.net)
+        if self.mode == "explore_latent":
+            self.max_dim = self.sol.z_dim-1
+        elif self.mode == "explore_angle":
+            self.max_dim = 1
         # création de widgets Label()
         Labels_frame = Frame(self.fen1)
         Labels_frame.grid(sticky=E, row=0, column=0)
@@ -30,6 +37,11 @@ class latent_space_navigator(object):
         Label(Labels_frame,
               text='Change explored latent dimension : up down arrrows').pack()
         Label(Labels_frame, text='Explore dimension : left right arrows').pack()
+        if self.mode == "explore_latent":
+            text = "exploring latent space"
+        elif self.mode == "explore_angle":
+            text = "exploring angle space"
+        Label(Labels_frame, text=text).pack()
 
         Label(Labels_frame, text='Info:').pack()
         Label(Labels_frame, text='Latent space dimension : {0}'.format(
@@ -44,34 +56,64 @@ class latent_space_navigator(object):
         self.info_latent_pos = Label(
             Labels_frame, text='Current latent position :')
         self.info_latent_pos.pack()
+        self.info_angle_pos = Label(
+            Labels_frame, text='Current angle position :')
+        self.info_angle_pos.pack()
 
-        # self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
-        self.fen1.bind('<Left>', self.leftKey)
-        self.fen1.bind('<Right>', self.rightKey)
+        if self.mode == "explore_latent":
+            self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
+            self.fen1.bind('<Left>', self.navigate_latent_left)
+            self.fen1.bind('<Right>', self.navigate_latent_right)
+            self.fen1.bind('<Key-KP_0>', self.reinit_image)
+        elif self.mode == "explore_angle":
+            self.fen1.bind('<Left>', self.navigate_angle_left)
+            self.fen1.bind('<Right>', self.navigate_angle_right)
+            self.fen1.bind('<Key-KP_0>', self.reinit_angle)
         self.fen1.bind('<Up>', self.eplored_dimension_increment)
         self.fen1.bind('<Down>', self.explored_dimension_decrement)
         self.fen1.bind('<Key-KP_Add>', self.increment_exploration_step)
         self.fen1.bind('<Key-KP_Subtract>', self.decrement_exploration_step)
         self.fen1.bind('<Key-Escape>', self.close_window)
-        self.fen1.bind('<Key-KP_0>', self.reinit_image)
-        self.init_latent_position()
+
+        # self.init_latent_position() #for latent space navigation only
+        self.init_angle_position()
         self.init_img()
+        self.update_img()
         self.update_info_latent_pos()
 
-    def leftKey(self, event):
+    def navigate_latent_left(self, event):
         self.latent_position[self.current_navigated_dim] = self.latent_position[self.current_navigated_dim] - self.navigation_step
         self.update_img()
         self.update_info_latent_pos()
 
-    def rightKey(self, event):
+    def navigate_latent_right(self, event):
         self.latent_position[self.current_navigated_dim] = self.latent_position[self.current_navigated_dim] + self.navigation_step
         self.update_img()
         self.update_info_latent_pos()
 
+    def navigate_angle_left(self, event):
+        self.angle_position[self.current_navigated_dim] = self.angle_position[self.current_navigated_dim] - self.navigation_step
+        self.guess_latent_code()
+        self.update_img()
+        self.update_info_angle_pos()
+        self.update_info_latent_pos()
+
+    def navigate_angle_right(self, event):
+        self.angle_position[self.current_navigated_dim] = self.angle_position[self.current_navigated_dim] + self.navigation_step
+        self.guess_latent_code()
+        self.update_img()
+        self.update_info_angle_pos()
+        self.update_info_latent_pos()
+
     def eplored_dimension_increment(self, event):
-        self.current_navigated_dim = min(
-            self.current_navigated_dim + 1, self.sol.z_dim - 1)
-        self.update_info_dim()
+        if self.mode == "explore_latent":
+            self.current_navigated_dim = min(
+                self.current_navigated_dim + 1, self.max_dim)
+            self.update_info_dim()
+        elif self.mode == "explore_angle":
+            self.current_navigated_dim = min(
+                self.current_navigated_dim + 1, 1)
+            self.update_info_dim()
         print("Explored dimension updated")
 
     def explored_dimension_decrement(self, event):
@@ -102,9 +144,20 @@ class latent_space_navigator(object):
         self.info_latent_pos.configure(text='Current latent position :{}'.format(
             np.around(self.latent_position, 2)))
 
+    def update_info_angle_pos(self):
+        self.info_angle_pos.configure(text='Current angle position :{}'.format(
+            np.around(self.angle_position, 2)))
+
     def reinit_image(self, event):
         self.init_latent_position()
         self.update_img()
+        self.update_info_latent_pos()
+        print("Latent position re-initialized")
+
+    def reinit_angle(self, event):
+        self.init_angle_position()
+        self.update_img()
+        self.update_info_angle_pos()
         self.update_info_latent_pos()
         print("Latent position re-initialized")
 
@@ -121,6 +174,19 @@ class latent_space_navigator(object):
 
         # send initial image to CPU
         self.img_arr = get_image(tensor=tensor_image.cpu())
+
+    def init_angle_position(self):
+        self.angle_position = [0., 0.]
+        self.guess_latent_code()
+        self.img_arr = F.sigmoid(
+            self.sol.VAE_net.decoder(cuda(self.latent_position, True)).cpu().data)
+        self.img_arr = get_image(tensor=self.img_arr.cpu())
+
+    def guess_latent_code(self):
+        position_tensor = cuda(torch.tensor(self.angle_position), True)
+        self.latent_position = self.sol.position_encoder.forward(
+            position_tensor)
+        self.latent_position = self.latent_position.cpu()
 
     def encode_image(self, image):
         latent_position = self.sol.VAE_net.encoder(image)[:, :self.sol.z_dim]
