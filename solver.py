@@ -187,7 +187,7 @@ class Solver(object):
         pbar.close()
         self.net_mode(train=False)
 
-    def train(self, num_steps, update_iter):
+    def train(self, num_steps):
         for i in range(num_steps):
             for x, pos in self.VAE_data_loader:
                 x = Variable(cuda(x, self.use_cuda))
@@ -203,23 +203,20 @@ class Solver(object):
                     beta_vae_loss = recon_loss + self.gamma * (total_kld - C).abs()
                 self.VAE_step(beta_vae_loss)
 
-            if update_iter:
-                self.global_iter += 1
-
     def train_decoder_alone(self, num_steps):
         self.deactivate_grad(self.VAE_net.encoder)
-        self.train(num_steps, False)
+        self.train(num_steps)
         self.activate_grad(self.VAE_net.encoder)
 
     def train_encoder_alone(self, num_steps):
         self.deactivate_grad(self.VAE_net.decoder)
-        self.train(num_steps, False)
+        self.train(num_steps)
         self.activate_grad(self.VAE_net.decoder)
 
     def auxiliary_training(self):
         # TODO make sure initial disambiguation is done only if the network was not previously trained
         # self.initial_disambiguation()
-        nb_phases = int(30)
+        nb_phases = int(10)
         pbar = self.init_train(nb_phases)
         max_iter = self.max_iter
         num_steps = int(np.ceil(max_iter/nb_phases))
@@ -227,13 +224,15 @@ class Solver(object):
 
             # Deactivate gradients for decoder part for auxiliary training
             self.deactivate_grad(self.VAE_net.decoder)
-            self.encoder_auxiliary_training()
-            self.encoder_adversarial_training()
+            self.encoder_auxiliary_training(num_steps)
+            self.encoder_adversarial_training(num_steps)
             # Reactivate gradients for decoder part
             self.activate_grad(self.VAE_net.decoder)
+            # Train decoder alone in order not to lose disambiguation achieved with encoder
             self.train_decoder_alone(num_steps)
+            self.train(num_steps)
+            self.global_iter+=1
 
-            self.train(num_steps, update_iter=True)
             if training_phase == nb_phases-1:
                 save_name = "last"
             else:
@@ -241,9 +240,6 @@ class Solver(object):
                 # TODO check that auxiliary network is well saved and loaded
             self.save_checkpoint(save_name)
             self.viz_traverse()
-            # Pick new images for auxiliary and adversarial training (this is expensive due to all the pairwise ambiguity/similarity computations)
-            self.similarity_data_loader.dataset.sample_images()
-            self.ambiguity_data_loader.dataset.sample_images()
             pbar.update(1)
         self.end_train(pbar)
 
@@ -329,7 +325,7 @@ class Solver(object):
 
             pbar.update(1)
         pbar.close()
-        # self.save_checkpoint(filename="last")
+        self.save_checkpoint(filename="last")
 
         # # save auxiliary position network
         # filename = os.path.join(self.ckpt_dir, "position_auxiliary_encoder")
@@ -404,52 +400,51 @@ class Solver(object):
     # TODO verify proper shuffling of data
     # TODO verify autograd : is the gent properly computed ?
 
-    def encoder_auxiliary_training(self):
+    def encoder_auxiliary_training(self, num_steps):
         # Pairwise ambiguities are expensive to compute, so we might use ithemt several times each epoch
         # Train auxiliary network then encoder
 
-            
-        for _, data in enumerate(self.similarity_data_loader, 0):
-            similarity = data["similarity"]
-            # im1, im2, ambiguity, similarity = data
-            code1, code2 = self.encode_pairwise_imgs(data)
-            Aux_loss = self.aux_loss(
-                code1, code2, similarity)/self.similarity_data_loader.batch_size
-            self.aux_step(Aux_loss)
-
-        for _, data in enumerate(self.similarity_data_loader, 0):
-            similarity = data["similarity"]
-            # im1, im2, ambiguity, similarity = data
-            code1, code2 = self.encode_pairwise_imgs(data)
-            Aux_loss = self.aux_loss(
-                code1, code2, similarity)/self.similarity_data_loader.batch_size
-            self.VAE_aux_step(Aux_loss)
-
+        for i in range(num_steps):
+            for _, data in enumerate(self.similarity_data_loader, 0):
+                similarity = data["similarity"]
+                # im1, im2, ambiguity, similarity = data
+                code1, code2 = self.encode_pairwise_imgs(data)
+                Aux_loss = self.aux_loss(
+                    code1, code2, similarity)/self.similarity_data_loader.batch_size
+                self.aux_step(Aux_loss)
         # Refresh pairwise dataset from image dataset
-        self.similarity_data_loader.dataset.sample_images()
+            self.similarity_data_loader.dataset.sample_images()
 
+        for i in range(num_steps):
+            for _, data in enumerate(self.similarity_data_loader, 0):
+                similarity = data["similarity"]
+                # im1, im2, ambiguity, similarity = data
+                code1, code2 = self.encode_pairwise_imgs(data)
+                Aux_loss = self.aux_loss(code1, code2, similarity)/self.similarity_data_loader.batch_size
+                self.VAE_aux_step(Aux_loss)
 
-    def encoder_adversarial_training(self):
-        for _, data in enumerate(self.ambiguity_data_loader, 0):
-            ambiguity = data["ambiguity"]
-            # im1, im2, ambiguity, similarity = data
-            code1, code2 = self.encode_pairwise_imgs(data)
-            Adv_loss = self.adv_loss(
-                code1, code2, ambiguity)/self.ambiguity_data_loader.batch_size
-            self.adv_step(Adv_loss)
+    def encoder_adversarial_training(self, num_steps):
+        for i in range(num_steps):
+            for _, data in enumerate(self.ambiguity_data_loader, 0):
+                ambiguity = data["ambiguity"]
+                # im1, im2, ambiguity, similarity = data
+                code1, code2 = self.encode_pairwise_imgs(data)
+                Adv_loss = self.adv_loss(
+                    code1, code2, ambiguity)/self.ambiguity_data_loader.batch_size
+                self.adv_step(Adv_loss)
+            # Refresh pairwise dataset from image dataset
+            self.ambiguity_data_loader.dataset.sample_images()
 
-        for _, data in enumerate(self.ambiguity_data_loader, 0):
-            ambiguity = data["ambiguity"]
-            # im1, im2, ambiguity, similarity = data
-            code1, code2 = self.encode_pairwise_imgs(data)
-            Adv_loss = self.adv_loss(
-                code1, code2, ambiguity)/self.ambiguity_data_loader.batch_size
-            # self.VAE_step(Adv_loss * -1)
-            self.VAE_adv_step(Adv_loss) #for auxiliary training instead of adversarial training
+        for i in range(num_steps):
+            for _, data in enumerate(self.ambiguity_data_loader, 0):
+                ambiguity = data["ambiguity"]
+                # im1, im2, ambiguity, similarity = data
+                code1, code2 = self.encode_pairwise_imgs(data)
+                Adv_loss = self.adv_loss(
+                    code1, code2, ambiguity)/self.ambiguity_data_loader.batch_size
+                # self.VAE_step(Adv_loss * -1)
+                self.VAE_adv_step(Adv_loss) #for auxiliary training instead of adversarial training
 
-
-        # Refresh pairwise dataset from image dataset
-        self.ambiguity_data_loader.dataset.sample_images()
 
     def deactivate_grad(self, net):
         for param in net.parameters():
@@ -596,8 +591,9 @@ class Solver(object):
 
             print("=> loaded checkpoint '{} (iter {})'".format(
                 file_path, self.global_iter))
+            self.position_encoder.load_state_dict(
+                checkpoint['model_states']["pos_net"])
+            self.position_optim.load_state_dict(
+                checkpoint['optim_states']['pos_optim'])
         else:
             print("=> no checkpoint found at '{}'".format(file_path))
-            self.position_encoder.load_state_dict(checkpoint['model_states']["position_net"])
-            self.pos_optim.load_state_dict(
-                checkpoint['optim_states']['pos_optim'])

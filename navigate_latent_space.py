@@ -61,7 +61,6 @@ class latent_space_navigator(object):
         self.info_angle_pos.pack()
 
         if self.mode == "explore_latent":
-            self.can1.grid(row=0, column=2, rowspan=4, padx=10, pady=5)
             self.fen1.bind('<Left>', self.navigate_latent_left)
             self.fen1.bind('<Right>', self.navigate_latent_right)
             self.fen1.bind('<Key-KP_0>', self.reinit_image)

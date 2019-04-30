@@ -173,13 +173,12 @@ class In_memory_paired_dataset:
 
         # ambiguity, to be maximized by Adversarial Net and minimized by VAE
         # ambiguities = (img_MI + img_errors) / 2 - cam_errors
-        # Similarity, to be maximized by auxiliary net and VAE
-        # similarities = cam_errors + (img_MI - img_errors) / 2
+        # similarities = cam_errors + (img_MI - img_errors) /scale 2
 
         if self.type == "ambiguity":
             # Find the 5% most ambiguous and 5% least ambiguous and give them an ambiguity class {0,1}
             ambiguities = img_errors - cam_errors
-            keep = int(np.ceil(np.size(ambiguities) * 0.05))
+            keep = int(np.ceil(np.size(ambiguities) * 0.1))
             amb_indexes = np.argsort(ambiguities)
             ambiguous_pairs = amb_indexes[:keep]
             not_ambiguous_pairs = amb_indexes[-keep:]
@@ -189,9 +188,9 @@ class In_memory_paired_dataset:
             self.ambiguities = np.concatenate(([0]*keep, [1]*keep))
 
         if self.type == "similarity":
-            # Find the 10% most similar and 10% least similar and give them a similarity class {0,1}
+            # Find the n% most similar and n% least similar and give them a similarity class {0,1}
             similarities = -1 * cam_errors
-            keep = int(np.ceil(np.size(similarities) * 0.1))
+            keep = int(np.ceil(np.size(similarities) * 0.2))
             sim_indexes = np.argsort(similarities)
             similar_pairs = sim_indexes[:keep]
             not_similar_pairs = sim_indexes[-keep:]

@@ -53,20 +53,18 @@ class Auxiliary_network(nn.Module):
         # )
 
         self.net = nn.Sequential(
-            nn.Linear(2*z_dim, size),
-            torch.nn.Sigmoid(),
+            nn.Linear(2*self.z_dim, size),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, size),
-            nn.Dropout(0.2),
-            torch.nn.PReLU(),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, size),
-            nn.Dropout(0.2),
-            torch.nn.PReLU(),
-            nn.Linear(size, size),
-            nn.Dropout(0.2),
-            torch.nn.PReLU(),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, 1),
-            nn.Sigmoid()
-            # torch.nn.PReLU()
+            nn.Dropout(0.3),
+            nn.PReLU(),
         )
 
         self.weight_init()
@@ -89,15 +87,20 @@ class Position_auxiliary_encoder(nn.Module):
         # This is not a classifier but a function estimator, so the activation functions should not be too steep
         self.net = nn.Sequential(
             nn.Linear(self.pos_dim, size),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, size),
-            nn.Dropout(0.2),
-            nn.Sigmoid(),
-            nn.Dropout(0.2),
-            nn.Sigmoid(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, size),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
+            nn.PReLU(),
+            nn.Linear(size, size),
+            nn.Dropout(0.3),
+            nn.PReLU(),
+            nn.Linear(size, size),
+            nn.Dropout(0.3),
+            nn.PReLU(),
             nn.Linear(size, self.code_dim),
         )
         self.weight_init()

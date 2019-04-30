@@ -137,7 +137,7 @@ def get_ambiguities(folder, pairs, pairs_nb, ambiguities_only=True):
     # Similarities for auxiliary network
     # ambiguities = (img_MI + img_errors) / 2 - cam_errors
     # ambiguities = img_errors-img_MI / 2 -
-    ambiguities = -cam_errors
+    ambiguities = cam_errors*-1
 
     if ambiguities_only:
         return ambiguities

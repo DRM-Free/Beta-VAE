@@ -41,29 +41,37 @@ def main(args):
 
     net.net_mode(train=False)
 
-    # Reinit position encoder and optimizer
-    # net.position_encoder = Position_auxiliary_encoder(
-    #     2, net.z_dim)
-    # net.position_encoder = cuda(net.position_encoder, True)
-    # net.position_optim = optim.Adadelta(
-    #     params=net.position_encoder.parameters())
-
     # check that the model is correctly loaded
-    navigator = latent_space_navigator(net, "explore_angle")
-    navigator.navigate()
+    # navigator = latent_space_navigator(net, "explore_angle")
+    # navigator.navigate()
     # Training auxiliary position encoder
     # net.position_auxiliary_encoder_train()
 
     if args.train:
-        # net.train()
         net.auxiliary_training()
         # net.supervised_training()
     else:
         net.viz_traverse()
     if args.navigate_latent_space:
-        # net.navigate_latent_space()
         net.net_mode(train=False)
         navigator = latent_space_navigator(net, mode="explore_latent")
+        navigator.navigate()
+
+    reinit_position_encoder = True
+    if reinit_position_encoder:
+        # Reinit position encoder and optimizer, for instance to change its design
+        net.position_encoder = Position_auxiliary_encoder(
+            2, net.z_dim)
+        net.position_encoder = cuda(net.position_encoder, True)
+        net.position_optim = optim.Adadelta(
+            params=net.position_encoder.parameters())
+
+        # Training auxiliary position encoder
+    net.position_auxiliary_encoder_train()
+
+    if args.navigate_latent_space:
+        net.net_mode(train=False)
+        navigator = latent_space_navigator(net, mode="explore_angle")
         navigator.navigate()
 
 
