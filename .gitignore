@@ -1,3 +1,4 @@
-data/
+/data/*
+!/data/cube_small
 __pycache__/
 outputs
