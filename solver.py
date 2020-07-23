@@ -222,14 +222,14 @@ class Solver(object):
         num_steps = int(np.ceil(max_iter/nb_phases))
         for training_phase in range(nb_phases):
 
-            # Deactivate gradients for decoder part for auxiliary training
-            self.deactivate_grad(self.VAE_net.decoder)
-            self.encoder_auxiliary_training(num_steps)
-            self.encoder_adversarial_training(num_steps)
-            # Reactivate gradients for decoder part
-            self.activate_grad(self.VAE_net.decoder)
-            # Train decoder alone in order not to lose disambiguation achieved with encoder
-            self.train_decoder_alone(num_steps)
+            # # Deactivate gradients for decoder part for auxiliary training
+            # self.deactivate_grad(self.VAE_net.decoder)
+            # self.encoder_auxiliary_training(num_steps)
+            # self.encoder_adversarial_training(num_steps)
+            # # Reactivate gradients for decoder part
+            # self.activate_grad(self.VAE_net.decoder)
+            # # Train decoder alone in order not to lose disambiguation achieved with encoder
+            # self.train_decoder_alone(num_steps)
             self.train(num_steps)
             self.global_iter+=1
 
@@ -393,6 +393,7 @@ class Solver(object):
 
     def adv_step(self, Adv_loss):
         self.Adv_optim.zero_grad()
+        # Adv_loss = -Adv_loss  # propagate the negative error
         Adv_loss.backward()
         self.Adv_optim.step()
 

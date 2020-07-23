@@ -14,6 +14,9 @@
 # try to encourage code unicity directly during training (same loss function as the alternative encoder to add to encoder loss, not to
 # decoder loss)
 
+import torch.optim as optim
+from utils import cuda
+from model import Position_auxiliary_encoder
 import argparse
 
 import numpy as np
@@ -25,10 +28,6 @@ from utils import str2bool
 from navigate_latent_space import latent_space_navigator
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
-
-from model import Position_auxiliary_encoder
-from utils import cuda
-import torch.optim as optim
 
 
 def main(args):

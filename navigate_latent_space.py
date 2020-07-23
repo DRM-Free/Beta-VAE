@@ -19,7 +19,7 @@ class latent_space_navigator(object):
         self.mode = mode
         self.current_navigated_dim = 0
         self.navigation_step = 0.5
-        self.displayed_image_size = [200, 200]
+        self.displayed_image_size = [500, 500]
         self.fen1 = Tk()
         self.sol = sol
         self.sol.position_encoder.train(False)
